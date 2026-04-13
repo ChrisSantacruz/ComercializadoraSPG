@@ -33,7 +33,7 @@ class WompiService {
             const payload = {
                 name: `Pedido #${reference}`,
                 description: `Pago del pedido ${reference} - Comercializadora SPG`,
-                single_use: false, // Cambiar a false para evitar problemas en pruebas
+                single_use: true, // Un solo uso por enlace de pago
                 collect_shipping: false,
                 currency: currency || 'COP',
                 amount_in_cents: Math.round(amount * 100), // Convertir a centavos

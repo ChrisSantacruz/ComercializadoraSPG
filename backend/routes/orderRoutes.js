@@ -5,6 +5,11 @@ const { protect, authorize } = require('../middlewares/auth');
 
 // RUTAS ESPECÍFICAS PRIMERO (antes de las rutas con parámetros)
 
+// @route   GET /api/orders/:id/payment-status
+// @desc    Verificar estado de pago (público, para retorno de pasarela)
+// @access  Public
+router.get('/:id/payment-status', orderController.verificarEstadoPago);
+
 // @route   GET /api/orders/my-orders
 // @desc    Get user's own orders
 // @access  Private

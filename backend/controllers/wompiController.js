@@ -299,16 +299,23 @@ const wompiController = {
         try {
             const signature = req.headers['x-signature'];
             const timestamp = req.headers['x-timestamp'];
-            const eventData = req.body;
+            
+            // express.raw() entrega un Buffer, convertir a objeto
+            let eventData;
+            if (Buffer.isBuffer(req.body)) {
+                eventData = JSON.parse(req.body.toString('utf8'));
+            } else {
+                eventData = req.body;
+            }
 
             console.log('Webhook received:', {
                 signature,
                 timestamp,
-                eventData
+                event: eventData?.event
             });
 
             // Validar integridad del evento
-            if (!wompiService.validateEventIntegrity(signature, timestamp, eventData)) {
+            if (signature && !wompiService.validateEventIntegrity(signature, timestamp, eventData)) {
                 console.error('Invalid webhook signature');
                 return res.status(401).json({ error: 'Invalid signature' });
             }
@@ -348,7 +355,8 @@ const wompiController = {
                 // Actualizar estado según el estado de la transacción
                 switch (transaction.status) {
                     case 'APPROVED':
-                        order.status = 'paid';
+                        order.estado = 'confirmado';
+                        order.paymentInfo = order.paymentInfo || {};
                         order.paymentInfo.transactionId = transaction.id;
                         order.paymentInfo.paymentStatus = 'approved';
                         order.paymentInfo.paidAt = new Date();
@@ -393,7 +401,8 @@ const wompiController = {
                         break;
 
                     case 'DECLINED':
-                        order.status = 'payment_failed';
+                        order.estado = 'cancelado';
+                        order.paymentInfo = order.paymentInfo || {};
                         order.paymentInfo.paymentStatus = 'declined';
                         order.paymentInfo.failureReason = transaction.status_message;
                         
@@ -408,20 +417,22 @@ const wompiController = {
                         break;
 
                     case 'PENDING':
-                        order.status = 'payment_pending';
+                        order.estado = 'pendiente';
+                        order.paymentInfo = order.paymentInfo || {};
                         order.paymentInfo.transactionId = transaction.id;
                         order.paymentInfo.paymentStatus = 'pending';
                         break;
 
                     case 'ERROR':
-                        order.status = 'payment_failed';
+                        order.estado = 'cancelado';
+                        order.paymentInfo = order.paymentInfo || {};
                         order.paymentInfo.paymentStatus = 'error';
                         order.paymentInfo.failureReason = transaction.status_message;
                         break;
                 }
 
                 await order.save();
-                console.log(`Order ${order._id} updated to status: ${order.status}`);
+                console.log(`Order ${order._id} updated to estado: ${order.estado}`);
             }
         } catch (error) {
             console.error('Error handling payment event:', error);

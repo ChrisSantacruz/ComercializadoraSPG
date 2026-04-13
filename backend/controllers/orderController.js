@@ -1175,6 +1175,44 @@ const confirmarEntrega = async (req, res) => {
   }
 };
 
+// @desc    Verificar estado de pago de una orden (público, para retorno de pasarela)
+// @route   GET /api/orders/:id/payment-status
+// @access  Public (solo devuelve estado mínimo)
+const verificarEstadoPago = async (req, res) => {
+  try {
+    if (!validarObjectId(req.params.id)) {
+      return res.status(400).json({ exito: false, mensaje: 'ID de pedido inválido' });
+    }
+
+    const pedido = await Order.findById(req.params.id)
+      .select('estado total numeroOrden tipoEntrega costoEnvio subtotal impuestos paymentInfo productos')
+      .populate('productos.producto', 'nombre imagenPrincipal precio');
+
+    if (!pedido) {
+      return res.status(404).json({ exito: false, mensaje: 'Pedido no encontrado' });
+    }
+
+    res.json({
+      exito: true,
+      datos: {
+        _id: pedido._id,
+        numeroOrden: pedido.numeroOrden,
+        estado: pedido.estado,
+        total: pedido.total,
+        subtotal: pedido.subtotal,
+        impuestos: pedido.impuestos,
+        costoEnvio: pedido.costoEnvio,
+        tipoEntrega: pedido.tipoEntrega,
+        paymentStatus: pedido.paymentInfo?.paymentStatus || null,
+        productos: pedido.productos
+      }
+    });
+  } catch (error) {
+    console.error('Error verificando estado de pago:', error);
+    errorResponse(res, 'Error interno del servidor', 500);
+  }
+};
+
 module.exports = {
   crearPedido,
   obtenerMisPedidos,
@@ -1188,5 +1226,6 @@ module.exports = {
   confirmarEntrega,
   obtenerOrdenesComerciante,
   actualizarEstadoOrden,
-  obtenerDetalleOrden
+  obtenerDetalleOrden,
+  verificarEstadoPago
 }; 

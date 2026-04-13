@@ -341,8 +341,7 @@ const CheckoutPageOptimized: React.FC = () => {
       if (paymentResult.success && paymentResult.data?.paymentUrl) {
         console.log('✅ Payment link created, redirecting to:', paymentResult.data.paymentUrl);
         
-        // Limpiar carrito
-        await cartService.clearCart();
+        // El carrito se limpia en WompiReturnPageFixed después de confirmar el pago
         
         // Mostrar mensaje de éxito
         showSuccess('Redirigiendo a Wompi', 'Te redirigiremos a la página de pago segura en unos momentos...');
