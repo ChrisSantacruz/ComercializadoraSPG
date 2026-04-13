@@ -1,8 +1,8 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import LoadingSpinner from '../../components/ui/LoadingSpinner';
 import api from '../../services/api';
 import { cartService } from '../../services/cartService';
-import LoadingSpinner from '../../components/ui/LoadingSpinner';
 import { getImageUrl } from '../../utils/imageUtils';
 
 interface OrderProduct {
