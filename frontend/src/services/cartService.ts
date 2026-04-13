@@ -1,5 +1,5 @@
-import api, { handleApiResponse } from './api';
 import { Cart, Coupon, DeliveryType } from '../types';
+import api, { handleApiResponse } from './api';
 
 export const cartService = {
   // Obtener carrito

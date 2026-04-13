@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import { Order } from '../../types';
+import React, { useEffect, useState } from 'react';
 import LoadingSpinner from '../../components/ui/LoadingSpinner';
 import orderService from '../../services/orderService';
-import { getImageUrl, getFirstImageUrl } from '../../utils/imageUtils';
+import { Order } from '../../types';
+import { getFirstImageUrl, getImageUrl } from '../../utils/imageUtils';
 
 const MerchantOrders: React.FC = () => {
   const [orders, setOrders] = useState<Order[]>([]);

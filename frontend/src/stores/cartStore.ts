@@ -1,8 +1,8 @@
-import { create } from 'zustand';
-import { persist, createJSONStorage } from 'zustand/middleware';
-import { Cart, CartItem, Product, Coupon, DeliveryType } from '../types';
-import { cartService } from '../services/cartService';
 import toast from 'react-hot-toast';
+import { create } from 'zustand';
+import { createJSONStorage, persist } from 'zustand/middleware';
+import { cartService } from '../services/cartService';
+import { Cart, DeliveryType } from '../types';
 
 interface CartState {
   // Estado

@@ -1,14 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Cart, Address, OrderForm, DeliveryType } from '../../types';
-import { cartService } from '../../services/cartService';
-import addressService from '../../services/addressService';
-import orderService from '../../services/orderService';
-import wompiService from '../../services/wompiService';
 import LoadingSpinner from '../../components/ui/LoadingSpinner';
 import { useNotificationCard } from '../../hooks/useNotificationCard';
+import addressService from '../../services/addressService';
+import { cartService } from '../../services/cartService';
+import orderService from '../../services/orderService';
+import wompiService from '../../services/wompiService';
 import { useAuthStore } from '../../stores/authStore';
-import { getDepartamentos, getCiudadesPorDepartamento } from '../../utils/colombiaData';
+import { Address, Cart, DeliveryType, OrderForm } from '../../types';
+import { getCiudadesPorDepartamento, getDepartamentos } from '../../utils/colombiaData';
 
 const CheckoutPageOptimized: React.FC = () => {
   const navigate = useNavigate();

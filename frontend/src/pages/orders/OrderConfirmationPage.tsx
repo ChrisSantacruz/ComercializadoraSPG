@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { Order } from '../../types';
-import orderService from '../../services/orderService';
+import React, { useEffect, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import LoadingSpinner from '../../components/ui/LoadingSpinner';
-import { getImageUrl, getFirstImageUrl } from '../../utils/imageUtils';
+import orderService from '../../services/orderService';
+import { Order } from '../../types';
 import { formatDeliveryInfo } from '../../utils/addressUtils';
+import { getFirstImageUrl, getImageUrl } from '../../utils/imageUtils';
 
 const OrderConfirmationPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
