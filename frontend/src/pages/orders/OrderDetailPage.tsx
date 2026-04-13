@@ -439,10 +439,12 @@ const OrderDetailPage: React.FC = () => {
                   </div>
                 )}
                 
+                {order.impuestos > 0 && (
                 <div className="flex justify-between text-gray-600">
                   <span>Impuestos</span>
                   <span>${order.impuestos.toLocaleString('es-CO')}</span>
                 </div>
+                )}
                 
                 <div className="flex justify-between text-gray-600">
                   <span>{isStorePickup ? 'Recogida' : 'Envío'}</span>

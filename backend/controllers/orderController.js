@@ -88,8 +88,8 @@ const crearPedido = async (req, res) => {
       // NO descontar stock aquí - se descontará cuando se confirme el pago
     }
 
-    // Calcular impuestos y total
-    const impuestos = Math.round(subtotal * 0.15);
+    // Impuestos deshabilitados temporalmente
+    const impuestos = 0;
     const costoEnvio = esRecogidaEstablecimiento ? 0 : SHIPPING_COST_COP;
     const total = subtotal + impuestos + costoEnvio;
 

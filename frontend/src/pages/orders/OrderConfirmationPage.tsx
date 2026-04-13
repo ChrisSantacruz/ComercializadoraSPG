@@ -283,10 +283,12 @@ const OrderConfirmationPage: React.FC = () => {
                     {order.costoEnvio === 0 ? 'Gratis' : `$${order.costoEnvio.toLocaleString('es-CO')}`}
                   </span>
                 </div>
+                {order.impuestos > 0 && (
                 <div className="flex justify-between">
                   <span className="text-gray-600">Impuestos</span>
                   <span className="font-medium">${order.impuestos.toLocaleString('es-CO')}</span>
                 </div>
+                )}
                 <hr className="my-4" />
                 <div className="flex justify-between text-lg font-bold">
                   <span>Total</span>

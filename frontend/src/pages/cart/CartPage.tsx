@@ -307,10 +307,12 @@ const CartPage: React.FC = () => {
                   </p>
                 )}
                 
+                {cart.impuestos > 0 && (
                 <div className="flex justify-between">
                   <span className="text-gray-600">Impuestos</span>
                   <span className="font-medium">${cart.impuestos.toLocaleString('es-CO')}</span>
                 </div>
+                )}
                 
                 <hr className="my-4" />
                 

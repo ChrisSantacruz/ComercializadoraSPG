@@ -293,8 +293,8 @@ cartSchema.methods.calcularTotales = function() {
     }
   }, 0);
   
-  // Calcular impuestos (15% IVA)
-  const impuestos = (subtotal - descuentos) * 0.15;
+  // Impuestos deshabilitados temporalmente
+  const impuestos = 0;
   
   // Costo de envío fijo de $18.000 COP (solo si hay productos en el carrito)
   const costoEnvio = this.productos.length > 0 && this.tipoEntrega !== 'recoger_establecimiento'
