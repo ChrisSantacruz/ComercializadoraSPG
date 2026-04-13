@@ -1,5 +1,8 @@
 const mongoose = require('mongoose');
 
+const DELIVERY_TYPES = ['domicilio', 'recoger_establecimiento'];
+const SHIPPING_COST_COP = 18000;
+
 const cartSchema = new mongoose.Schema({
   // Usuario propietario del carrito
   usuario: {
@@ -85,6 +88,12 @@ const cartSchema = new mongoose.Schema({
       },
       message: 'El costo de envío debe ser un número válido'
     }
+  },
+
+  tipoEntrega: {
+    type: String,
+    enum: DELIVERY_TYPES,
+    default: 'domicilio'
   },
   
   total: {
@@ -288,7 +297,9 @@ cartSchema.methods.calcularTotales = function() {
   const impuestos = (subtotal - descuentos) * 0.15;
   
   // Costo de envío fijo de $18.000 COP (solo si hay productos en el carrito)
-  const costoEnvio = this.productos.length > 0 ? 18000 : 0;
+  const costoEnvio = this.productos.length > 0 && this.tipoEntrega !== 'recoger_establecimiento'
+    ? SHIPPING_COST_COP
+    : 0;
   
   // Calcular total
   const total = subtotal - descuentos + impuestos + costoEnvio;

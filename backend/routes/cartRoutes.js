@@ -34,6 +34,11 @@ router.delete('/remove/:productId', protect, cartController.eliminarDelCarrito);
 // @access  Private
 router.delete('/clear', protect, cartController.limpiarCarrito);
 
+// @route   PUT /api/cart/delivery-type
+// @desc    Update cart delivery type
+// @access  Private
+router.put('/delivery-type', protect, cartController.actualizarTipoEntrega);
+
 // @route   POST /api/cart/coupon
 // @desc    Apply coupon to cart
 // @access  Private

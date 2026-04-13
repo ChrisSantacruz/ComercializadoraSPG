@@ -1,5 +1,5 @@
 import api, { handleApiResponse } from './api';
-import { Cart, Coupon } from '../types';
+import { Cart, Coupon, DeliveryType } from '../types';
 
 export const cartService = {
   // Obtener carrito
@@ -74,6 +74,12 @@ export const cartService = {
   // Recalcular totales del carrito
   recalculateCart: async (): Promise<Cart> => {
     const response = await api.post('/cart/recalculate');
+    return handleApiResponse<Cart>(response);
+  },
+
+  // Actualizar tipo de entrega del carrito
+  updateDeliveryType: async (tipoEntrega: DeliveryType): Promise<Cart> => {
+    const response = await api.put('/cart/delivery-type', { tipoEntrega });
     return handleApiResponse<Cart>(response);
   },
 }; 

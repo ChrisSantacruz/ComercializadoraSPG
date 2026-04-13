@@ -317,9 +317,11 @@ const MerchantOrders: React.FC = () => {
                         <div>
                           <h4 className="font-semibold text-gray-900 mb-2">Entrega</h4>
                           <p className="text-gray-600 text-sm">
-                            {(order as any).direccionEntrega?.direccionCompleta || 
-                             `${(order as any).direccionEntrega?.calle || ''} ${(order as any).direccionEntrega?.ciudad || ''}`.trim() ||
-                             'Dirección no especificada'}
+                            {(order as any).tipoEntrega === 'recoger_establecimiento' || (order as any).envio?.tipoEnvio === 'recoger_tienda'
+                              ? 'Recoger en establecimiento'
+                              : (order as any).direccionEntrega?.direccionCompleta || 
+                                `${(order as any).direccionEntrega?.calle || ''} ${(order as any).direccionEntrega?.ciudad || ''}`.trim() ||
+                                'Dirección no especificada'}
                           </p>
                           <p className="text-gray-600 text-sm">
                             📅 {formatDate((order as any).fechaCreacion || (order as any).createdAt || new Date().toISOString())}

@@ -332,9 +332,15 @@ const OrdersPage: React.FC = () => {
                 {/* Información de entrega */}
                 {order.direccionEntrega && (
                   <div className="mt-4 border-t pt-4">
-                    <h4 className="text-sm font-medium text-gray-900 mb-2">Dirección de entrega:</h4>
+                    <h4 className="text-sm font-medium text-gray-900 mb-2">
+                      {(order as any).tipoEntrega === 'recoger_establecimiento' || (order as any).envio?.tipoEnvio === 'recoger_tienda'
+                        ? 'Entrega:'
+                        : 'Dirección de entrega:'}
+                    </h4>
                     <p className="text-sm text-gray-600">
-                      {getCompleteAddress(order.direccionEntrega)}
+                      {(order as any).tipoEntrega === 'recoger_establecimiento' || (order as any).envio?.tipoEnvio === 'recoger_tienda'
+                        ? 'Recoger en establecimiento'
+                        : getCompleteAddress(order.direccionEntrega)}
                     </p>
                   </div>
                 )}

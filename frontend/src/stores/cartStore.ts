@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import { Cart, CartItem, Product, Coupon } from '../types';
+import { Cart, CartItem, Product, Coupon, DeliveryType } from '../types';
 import { cartService } from '../services/cartService';
 import toast from 'react-hot-toast';
 
@@ -16,6 +16,7 @@ interface CartState {
   updateQuantity: (productId: string, cantidad: number) => Promise<void>;
   removeItem: (productId: string) => Promise<void>;
   clearCart: () => Promise<void>;
+  updateDeliveryType: (tipoEntrega: DeliveryType) => Promise<void>;
   applyCoupon: (codigo: string) => Promise<void>;
   removeCoupon: (codigo: string) => Promise<void>;
   getItemCount: () => number;
@@ -113,6 +114,23 @@ export const useCartStore = create<CartState>()(
             isLoading: false,
           });
           toast.error(error.message || 'Error al limpiar carrito');
+          throw error;
+        }
+      },
+
+      // Actualizar tipo de entrega
+      updateDeliveryType: async (tipoEntrega: DeliveryType) => {
+        set({ isLoading: true, error: null });
+
+        try {
+          const cart = await cartService.updateDeliveryType(tipoEntrega);
+          set({ cart, isLoading: false });
+        } catch (error: any) {
+          set({
+            error: error.message || 'Error al actualizar tipo de entrega',
+            isLoading: false,
+          });
+          toast.error(error.message || 'Error al actualizar tipo de entrega');
           throw error;
         }
       },

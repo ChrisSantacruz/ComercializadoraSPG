@@ -39,6 +39,10 @@ export const getRecipientPhone = (address: DeliveryAddressType): string => {
  */
 export const getCompleteAddress = (address: DeliveryAddressType): string => {
   const addr = address as any;
+
+  if (addr.calle === 'Recoger en establecimiento') {
+    return 'Recoger en establecimiento';
+  }
   
   // Si ya tiene direccionCompleta construida, usarla
   if (addr.direccionCompleta) {

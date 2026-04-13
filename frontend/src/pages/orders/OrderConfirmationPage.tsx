@@ -117,6 +117,8 @@ const OrderConfirmationPage: React.FC = () => {
     );
   }
 
+  const isStorePickup = order.tipoEntrega === 'recoger_establecimiento' || order.envio?.tipoEnvio === 'recoger_tienda';
+
   return (
     <div className="min-h-screen bg-gray-50 py-8">
       <div className="container mx-auto px-4">
@@ -180,7 +182,22 @@ const OrderConfirmationPage: React.FC = () => {
             {/* Información de entrega */}
             <div className="bg-white rounded-xl shadow-lg p-6">
               <h2 className="text-xl font-semibold text-gray-900 mb-4">Información de entrega</h2>
-              {(() => {
+              {isStorePickup ? (
+                <div className="space-y-3">
+                  <div>
+                    <p className="text-sm font-medium text-gray-700">Modalidad</p>
+                    <p className="text-gray-900">Recoger en establecimiento</p>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-gray-700">Destinatario</p>
+                    <p className="text-gray-900">{order.cliente?.nombre || 'Cliente'}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-gray-700">Notas</p>
+                    <p className="text-gray-900">Te contactaremos para coordinar la recogida de tu pedido.</p>
+                  </div>
+                </div>
+              ) : (() => {
                 const deliveryInfo = formatDeliveryInfo(order.direccionEntrega);
                 
                 return (
@@ -260,7 +277,7 @@ const OrderConfirmationPage: React.FC = () => {
                   </div>
                 )}
                 <div className="flex justify-between">
-                  <span className="text-gray-600">Envío</span>
+                  <span className="text-gray-600">{isStorePickup ? 'Recogida' : 'Envío'}</span>
                   <span className="font-medium">
                     {order.costoEnvio === 0 ? 'Gratis' : `$${order.costoEnvio.toLocaleString('es-CO')}`}
                   </span>

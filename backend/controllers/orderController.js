@@ -7,6 +7,8 @@ const { successResponse, errorResponse, paginateData, validarObjectId } = requir
 const { enviarNotificacion } = require('../services/notificationService');
 const mongoose = require('mongoose');
 
+const SHIPPING_COST_COP = 18000;
+
 // Forzar recarga del módulo - temporal
 
 // @desc    Crear nuevo pedido
@@ -14,12 +16,15 @@ const mongoose = require('mongoose');
 // @access  Private
 const crearPedido = async (req, res) => {
   try {
-    const { productos, direccionEntrega, metodoPago } = req.body;
+    const { productos, direccionEntrega, metodoPago, tipoEntrega = 'domicilio', comentarios } = req.body;
     const clienteId = req.usuario.id;
+    const esRecogidaEstablecimiento = tipoEntrega === 'recoger_establecimiento';
+
+    const cliente = await User.findById(clienteId).select('nombre telefono');
 
     // Si direccionEntrega es un string (ID), buscar la dirección
     let direccionCompleta = direccionEntrega;
-    if (typeof direccionEntrega === 'string') {
+    if (!esRecogidaEstablecimiento && typeof direccionEntrega === 'string') {
       const Address = require('../models/Address');
       const direccion = await Address.findById(direccionEntrega);
       if (!direccion) {
@@ -29,6 +34,13 @@ const crearPedido = async (req, res) => {
         });
       }
       direccionCompleta = direccion;
+    }
+
+    if (!esRecogidaEstablecimiento && !direccionCompleta) {
+      return res.status(400).json({
+        exito: false,
+        mensaje: 'La dirección de entrega es requerida para envíos a domicilio'
+      });
     }
 
     // Validar que hay productos
@@ -78,8 +90,34 @@ const crearPedido = async (req, res) => {
 
     // Calcular impuestos y total
     const impuestos = Math.round(subtotal * 0.15);
-    const costoEnvio = 18000; // Costo de envío fijo de $18.000 COP
+    const costoEnvio = esRecogidaEstablecimiento ? 0 : SHIPPING_COST_COP;
     const total = subtotal + impuestos + costoEnvio;
+
+    const instruccionesEntrega = esRecogidaEstablecimiento
+      ? ['Recoger en establecimiento', comentarios].filter(Boolean).join('. ')
+      : [direccionCompleta.instruccionesEntrega, comentarios].filter(Boolean).join('. ');
+
+    const direccionNormalizada = esRecogidaEstablecimiento
+      ? {
+          nombre: cliente?.nombre || 'Cliente',
+          telefono: cliente?.telefono || '',
+          calle: 'Recoger en establecimiento',
+          ciudad: 'Coordinar con el comercio',
+          departamento: 'Sin envío',
+          codigoPostal: '',
+          pais: 'Colombia',
+          instrucciones: instruccionesEntrega
+        }
+      : {
+          nombre: direccionCompleta.nombreDestinatario,
+          telefono: direccionCompleta.telefono,
+          calle: direccionCompleta.direccion.calle,
+          ciudad: direccionCompleta.direccion.ciudad,
+          departamento: direccionCompleta.direccion.departamento,
+          codigoPostal: direccionCompleta.direccion.codigoPostal || '',
+          pais: direccionCompleta.direccion.pais || 'Colombia',
+          instrucciones: instruccionesEntrega
+        };
 
     // Generar número de orden único
     const numeroOrden = `SPG-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
@@ -94,22 +132,17 @@ const crearPedido = async (req, res) => {
       costoEnvio,
       descuentos: 0,
       total,
+      tipoEntrega,
       estado: 'pendiente',
-      direccionEntrega: {
-        nombre: direccionCompleta.nombreDestinatario,
-        telefono: direccionCompleta.telefono,
-        calle: direccionCompleta.direccion.calle,
-        ciudad: direccionCompleta.direccion.ciudad,
-        departamento: direccionCompleta.direccion.departamento,
-        codigoPostal: direccionCompleta.direccion.codigoPostal || '',
-        pais: direccionCompleta.direccion.pais || 'Colombia',
-        instrucciones: direccionCompleta.instruccionesEntrega || ''
-      },
+      direccionEntrega: direccionNormalizada,
       metodoPago: {
         tipo: metodoPago.tipo,
         estado: 'pendiente',
         transaccionId: `TXN_${Date.now()}`,
         fechaPago: new Date()
+      },
+      envio: {
+        tipoEnvio: esRecogidaEstablecimiento ? 'recoger_tienda' : 'normal'
       }
     });
 
@@ -173,7 +206,17 @@ const crearPedido = async (req, res) => {
     // Limpiar carrito del usuario
     await Cart.findOneAndUpdate(
       { usuario: clienteId },
-      { $set: { productos: [], subtotal: 0, total: 0 } }
+      {
+        $set: {
+          productos: [],
+          subtotal: 0,
+          impuestos: 0,
+          costoEnvio: 0,
+          descuentos: 0,
+          total: 0,
+          tipoEntrega: 'domicilio'
+        }
+      }
     );
 
     res.status(201).json({

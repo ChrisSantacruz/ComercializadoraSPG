@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Cart, Address, OrderForm } from '../../types';
+import { Cart, Address, OrderForm, DeliveryType } from '../../types';
 import { cartService } from '../../services/cartService';
 import addressService from '../../services/addressService';
 import orderService from '../../services/orderService';
@@ -22,6 +22,8 @@ const CheckoutPageOptimized: React.FC = () => {
   const [processingPayment, setProcessingPayment] = useState(false);
   const [currentStep, setCurrentStep] = useState(1);
   const [error, setError] = useState('');
+  const [deliveryType, setDeliveryType] = useState<DeliveryType>('domicilio');
+  const [updatingDeliveryType, setUpdatingDeliveryType] = useState(false);
 
   // Estados para el formulario
   const [selectedAddress, setSelectedAddress] = useState<string>('');
@@ -66,6 +68,7 @@ const CheckoutPageOptimized: React.FC = () => {
   const [ciudadesDisponibles, setCiudadesDisponibles] = useState<string[]>([]);
   const [otraCiudad, setOtraCiudad] = useState('');
   const departamentos = getDepartamentos();
+  const isStorePickup = deliveryType === 'recoger_establecimiento';
 
   // Actualizar ciudades disponibles cuando cambie el departamento
   useEffect(() => {
@@ -108,6 +111,7 @@ const CheckoutPageOptimized: React.FC = () => {
         return;
       }
       setCart(cartData);
+      setDeliveryType(cartData.tipoEntrega || 'domicilio');
 
       // Cargar direcciones
       const addressesData = await addressService.getAddresses();
@@ -132,16 +136,34 @@ const CheckoutPageOptimized: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const handleDeliveryTypeChange = async (tipoEntrega: DeliveryType) => {
+    if (tipoEntrega === deliveryType) {
+      return;
+    }
+
+    try {
+      setUpdatingDeliveryType(true);
+      const updatedCart = await cartService.updateDeliveryType(tipoEntrega);
+      setCart(updatedCart);
+      setDeliveryType(updatedCart.tipoEntrega || tipoEntrega);
+      setError('');
+    } catch (deliveryError: any) {
+      setError(deliveryError.message || 'No se pudo actualizar el tipo de entrega');
+    } finally {
+      setUpdatingDeliveryType(false);
+    }
+  };
+
   const validateForm = (): boolean => {
     setError('');
 
     // Validar dirección
-    if (!useNewAddress && !selectedAddress) {
+    if (!isStorePickup && !useNewAddress && !selectedAddress) {
       setError('Selecciona una dirección de entrega');
       return false;
     }
 
-    if (useNewAddress) {
+    if (!isStorePickup && useNewAddress) {
       if (!newAddress.nombreDestinatario || !newAddress.telefono || 
           !newAddress.direccion.calle || !newAddress.direccion.ciudad ||
           !newAddress.direccion.departamento) {
@@ -171,13 +193,17 @@ const CheckoutPageOptimized: React.FC = () => {
       setError('');
       
       // Preparar dirección final (usar ciudad escrita si seleccionó "Otra")
-      const finalAddress = useNewAddress ? {
-        ...newAddress,
-        direccion: {
-          ...newAddress.direccion,
-          ciudad: newAddress.direccion.ciudad === 'Otra' ? otraCiudad : newAddress.direccion.ciudad
-        }
-      } : selectedAddress;
+      const finalAddress = isStorePickup
+        ? null
+        : useNewAddress
+          ? {
+              ...newAddress,
+              direccion: {
+                ...newAddress.direccion,
+                ciudad: newAddress.direccion.ciudad === 'Otra' ? otraCiudad : newAddress.direccion.ciudad
+              }
+            }
+          : selectedAddress;
 
       // Preparar datos de la orden
       const orderData: OrderForm = {
@@ -190,11 +216,12 @@ const CheckoutPageOptimized: React.FC = () => {
             : item.producto.comerciante._id
         })),
         direccionEntrega: finalAddress,
+        tipoEntrega: deliveryType,
         metodoPago: {
           tipo: paymentMethod,
           datos: {}
         },
-        usarDireccionGuardada: !useNewAddress,
+        usarDireccionGuardada: !isStorePickup && !useNewAddress,
         comentarios: comments
       };
 
@@ -247,9 +274,9 @@ const CheckoutPageOptimized: React.FC = () => {
       setProcessingPayment(true);
       
       // Obtener la dirección correcta
-      let address: Address;
+      let address: Address | null = null;
       
-      if (useNewAddress) {
+      if (!isStorePickup && useNewAddress) {
         // Usar ciudad personalizada si seleccionó "Otra"
         address = {
           ...newAddress,
@@ -259,7 +286,7 @@ const CheckoutPageOptimized: React.FC = () => {
           }
         };
         console.log('📍 Using new address:', address);
-      } else {
+      } else if (!isStorePickup) {
         // Buscar la dirección seleccionada en el array de direcciones
         const foundAddress = addresses.find(addr => addr._id === selectedAddress);
         if (!foundAddress) {
@@ -270,7 +297,10 @@ const CheckoutPageOptimized: React.FC = () => {
       }
 
       // Validar que tenemos los datos mínimos
-      if (!address.nombreDestinatario || !address.telefono || !address.direccion?.calle) {
+      const customerFullName = address?.nombreDestinatario || user?.nombre || 'Cliente Comercializadora SPG';
+      const customerPhone = address?.telefono || user?.telefono || '3000000000';
+
+      if (!customerFullName || !customerPhone) {
         throw new Error('Los datos de la dirección están incompletos');
       }
 
@@ -282,19 +312,21 @@ const CheckoutPageOptimized: React.FC = () => {
         amount: cart?.total || 0,
         currency: 'COP',
         customerData: {
-          fullName: address.nombreDestinatario,
+          fullName: customerFullName,
           email: user?.email || '',
-          phoneNumber: address.telefono,
+          phoneNumber: customerPhone,
           legalId: '12345678', // Placeholder - se puede extender el tipo User si se necesita
           legalIdType: 'CC'
         },
-        shippingAddress: {
-          addressLine1: address.direccion.calle,
-          city: address.direccion.ciudad,
-          phoneNumber: address.telefono,
-          region: address.direccion.departamento,
-          postalCode: address.direccion.codigoPostal || '110111'
-        }
+        ...(isStorePickup || !address ? {} : {
+          shippingAddress: {
+            addressLine1: address.direccion.calle,
+            city: address.direccion.ciudad,
+            phoneNumber: address.telefono,
+            region: address.direccion.departamento,
+            postalCode: address.direccion.codigoPostal || '110111'
+          }
+        })
       };
       
       // Crear enlace de pago de Wompi
@@ -428,7 +460,7 @@ const CheckoutPageOptimized: React.FC = () => {
           <div className="flex justify-center mt-3">
             <div className="flex space-x-20 text-sm font-medium">
               <span className={currentStep >= 1 ? 'text-blue-600' : 'text-gray-500'}>
-                Dirección de entrega
+                Entrega
               </span>
               <span className={currentStep >= 2 ? 'text-blue-600' : 'text-gray-500'}>
                 Método de pago
@@ -466,11 +498,40 @@ const CheckoutPageOptimized: React.FC = () => {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
                     </svg>
-                    Dirección de entrega
+                    Método de entrega
                   </h2>
 
+                  <div className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <button
+                      type="button"
+                      onClick={() => handleDeliveryTypeChange('domicilio')}
+                      disabled={updatingDeliveryType}
+                      className={`rounded-xl border p-4 text-left transition-colors ${
+                        deliveryType === 'domicilio'
+                          ? 'border-blue-600 bg-blue-50 shadow-sm'
+                          : 'border-gray-200 hover:border-gray-300'
+                      } ${updatingDeliveryType ? 'cursor-not-allowed opacity-60' : ''}`}
+                    >
+                      <p className="font-semibold text-gray-900 mb-1">Envío a domicilio</p>
+                      <p className="text-sm text-gray-600">Recibe tu pedido en la dirección que selecciones.</p>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDeliveryTypeChange('recoger_establecimiento')}
+                      disabled={updatingDeliveryType}
+                      className={`rounded-xl border p-4 text-left transition-colors ${
+                        deliveryType === 'recoger_establecimiento'
+                          ? 'border-green-600 bg-green-50 shadow-sm'
+                          : 'border-gray-200 hover:border-gray-300'
+                      } ${updatingDeliveryType ? 'cursor-not-allowed opacity-60' : ''}`}
+                    >
+                      <p className="font-semibold text-gray-900 mb-1">Recoger en establecimiento</p>
+                      <p className="text-sm text-gray-600">El envío no se cobra y coordinaremos la recogida contigo.</p>
+                    </button>
+                  </div>
+
                   {/* Direcciones guardadas */}
-                  {addresses.length > 0 && (
+                  {!isStorePickup && addresses.length > 0 && (
                     <div className="mb-6">
                       <h3 className="text-lg font-medium text-gray-900 mb-4">
                         Direcciones guardadas
@@ -522,6 +583,7 @@ const CheckoutPageOptimized: React.FC = () => {
                   )}
 
                   {/* Usar nueva dirección */}
+                  {!isStorePickup && (
                   <div className="mb-6">
                     <label className="flex items-center p-3 border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
                       <input
@@ -535,9 +597,10 @@ const CheckoutPageOptimized: React.FC = () => {
                       </span>
                     </label>
                   </div>
+                  )}
 
                   {/* Formulario nueva dirección */}
-                  {useNewAddress && (
+                  {!isStorePickup && useNewAddress && (
                     <div className="mb-6 p-4 bg-gray-50 rounded-lg">
                       <h4 className="font-medium text-gray-900 mb-4">Nueva dirección de entrega</h4>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -652,6 +715,15 @@ const CheckoutPageOptimized: React.FC = () => {
                     </div>
                   )}
 
+                  {isStorePickup && (
+                    <div className="mb-6 rounded-lg border border-green-200 bg-green-50 p-4">
+                      <h3 className="text-lg font-medium text-green-900 mb-2">Recogida en establecimiento</h3>
+                      <p className="text-sm text-green-800">
+                        Tu pedido quedará listo para recoger y te contactaremos para coordinar el retiro. No necesitas registrar una dirección y el envío queda en $0.
+                      </p>
+                    </div>
+                  )}
+
                   {/* Comentarios */}
                   <div className="mb-6">
                     <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -662,7 +734,9 @@ const CheckoutPageOptimized: React.FC = () => {
                       onChange={(e) => setComments(e.target.value)}
                       rows={3}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                      placeholder="Instrucciones especiales para la entrega, punto de referencia, etc."
+                      placeholder={isStorePickup
+                        ? 'Indicaciones para coordinar la recogida, horario preferido, etc.'
+                        : 'Instrucciones especiales para la entrega, punto de referencia, etc.'}
                     />
                   </div>
 
@@ -914,7 +988,7 @@ const CheckoutPageOptimized: React.FC = () => {
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-600">Envío:</span>
-                  <span className="font-medium">${cart.costoEnvio.toLocaleString('es-CO')}</span>
+                  <span className="font-medium">{cart.costoEnvio === 0 ? 'Gratis' : `$${cart.costoEnvio.toLocaleString('es-CO')}`}</span>
                 </div>
                 {cart.descuentos > 0 && (
                   <div className="flex justify-between text-sm">
@@ -935,9 +1009,15 @@ const CheckoutPageOptimized: React.FC = () => {
                     <svg className="w-4 h-4 mr-1 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
                     </svg>
-                    Dirección de entrega:
+                    Entrega:
                   </h4>
-                  {useNewAddress ? (
+                  {isStorePickup ? (
+                    <div className="text-sm text-green-700 space-y-1">
+                      <p className="font-medium">Recoger en establecimiento</p>
+                      <p>🏬 No se cobra envío.</p>
+                      <p>Te contactaremos para coordinar la recogida.</p>
+                    </div>
+                  ) : useNewAddress ? (
                     <div className="text-sm text-gray-600 space-y-1">
                       <p className="font-medium">{newAddress.nombreDestinatario}</p>
                       <p>📞 {newAddress.telefono}</p>

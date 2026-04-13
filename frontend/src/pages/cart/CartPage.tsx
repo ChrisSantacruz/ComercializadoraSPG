@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Cart, CartItem } from '../../types';
+import { Cart, CartItem, DeliveryType } from '../../types';
 import { useCartStore } from '../../stores/cartStore';
 import LoadingSpinner from '../../components/ui/LoadingSpinner';
 import { useNotifications } from '../../components/ui/NotificationContainer';
@@ -9,11 +9,12 @@ import { getImageUrl } from '../../utils/imageUtils';
 const CartPage: React.FC = () => {
   const navigate = useNavigate();
   const { showWarning } = useNotifications();
-  const { cart: storeCart, getCart, updateQuantity: updateStoreQuantity, removeItem: removeStoreItem, clearCart: clearStoreCart } = useCartStore();
+  const { cart: storeCart, getCart, updateQuantity: updateStoreQuantity, removeItem: removeStoreItem, clearCart: clearStoreCart, updateDeliveryType: updateStoreDeliveryType } = useCartStore();
   const [cart, setCart] = useState<Cart | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [updatingItem, setUpdatingItem] = useState<string | null>(null);
+  const [updatingDeliveryType, setUpdatingDeliveryType] = useState(false);
 
   useEffect(() => {
     loadCart();
@@ -81,6 +82,22 @@ const CartPage: React.FC = () => {
       setError(err instanceof Error ? err.message : 'Error vaciando carrito');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDeliveryTypeChange = async (tipoEntrega: DeliveryType) => {
+    if (!cart || cart.tipoEntrega === tipoEntrega) {
+      return;
+    }
+
+    try {
+      setUpdatingDeliveryType(true);
+      await updateStoreDeliveryType(tipoEntrega);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error actualizando tipo de entrega');
+    } finally {
+      setUpdatingDeliveryType(false);
     }
   };
 
@@ -225,6 +242,38 @@ const CartPage: React.FC = () => {
           <div className="lg:col-span-1">
             <div className="bg-white rounded-lg shadow-md p-6 sticky top-6">
               <h3 className="text-lg font-semibold text-gray-900 mb-4">Resumen del Pedido</h3>
+
+              <div className="mb-5 rounded-lg border border-gray-200 p-4">
+                <p className="text-sm font-medium text-gray-900 mb-3">Método de entrega</p>
+                <div className="space-y-2">
+                  <button
+                    type="button"
+                    onClick={() => handleDeliveryTypeChange('domicilio')}
+                    disabled={updatingDeliveryType}
+                    className={`w-full rounded-lg border px-4 py-3 text-left transition-colors ${
+                      cart.tipoEntrega === 'domicilio'
+                        ? 'border-blue-600 bg-blue-50 text-blue-900'
+                        : 'border-gray-200 hover:border-gray-300'
+                    } ${updatingDeliveryType ? 'cursor-not-allowed opacity-60' : ''}`}
+                  >
+                    <p className="font-medium">Envío a domicilio</p>
+                    <p className="text-sm text-gray-600">Se aplica el costo estándar de envío.</p>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDeliveryTypeChange('recoger_establecimiento')}
+                    disabled={updatingDeliveryType}
+                    className={`w-full rounded-lg border px-4 py-3 text-left transition-colors ${
+                      cart.tipoEntrega === 'recoger_establecimiento'
+                        ? 'border-green-600 bg-green-50 text-green-900'
+                        : 'border-gray-200 hover:border-gray-300'
+                    } ${updatingDeliveryType ? 'cursor-not-allowed opacity-60' : ''}`}
+                  >
+                    <p className="font-medium">Recoger en establecimiento</p>
+                    <p className="text-sm text-gray-600">No se cobra envío.</p>
+                  </button>
+                </div>
+              </div>
               
               <div className="space-y-3">
                 <div className="flex justify-between">
@@ -240,12 +289,18 @@ const CartPage: React.FC = () => {
                 )}
                 
                 <div className="flex justify-between">
-                  <span className="text-gray-600">Costo de envío</span>
+                  <span className="text-gray-600">
+                    {cart.tipoEntrega === 'recoger_establecimiento' ? 'Recogida en establecimiento' : 'Costo de envío'}
+                  </span>
                   <span className="font-medium">
-                    ${cart.costoEnvio.toLocaleString('es-CO')}
+                    {cart.costoEnvio === 0 ? 'Gratis' : `$${cart.costoEnvio.toLocaleString('es-CO')}`}
                   </span>
                 </div>
-                {cart.costoEnvio > 0 && (
+                {cart.tipoEntrega === 'recoger_establecimiento' ? (
+                  <p className="text-xs text-green-600 -mt-2">
+                    🏬 Recogerás tu pedido directamente en el establecimiento.
+                  </p>
+                ) : cart.costoEnvio > 0 && (
                   <p className="text-xs text-gray-500 -mt-2">
                     🚚 Envío a toda Colombia
                   </p>

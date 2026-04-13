@@ -179,11 +179,14 @@ export interface Coupon {
   esEnvioGratis?: boolean;
 }
 
+export type DeliveryType = 'domicilio' | 'recoger_establecimiento';
+
 export interface Cart {
   _id: string;
   usuario: string;
   productos: CartItem[];
   cupones: Coupon[];
+  tipoEntrega: DeliveryType;
   subtotal: number;
   descuentos: number;
   impuestos: number;
@@ -270,8 +273,16 @@ export interface Order {
   costoEnvio: number;
   descuentos: number;
   total: number;
+  tipoEntrega?: DeliveryType;
   estado: 'pendiente' | 'confirmado' | 'procesando' | 'enviado' | 'entregado' | 'cancelado';
   direccionEntrega: OrderDeliveryAddress | Address; // Puede ser cualquiera de las dos estructuras
+  envio?: {
+    tipoEnvio?: 'normal' | 'express' | 'recoger_tienda';
+    empresa?: string;
+    numeroGuia?: string;
+    fechaEntregaEstimada?: string;
+    fechaEntregaReal?: string;
+  };
   metodoPago: {
     tipo: 'PSE' | 'Nequi' | 'tarjeta_credito' | 'wompi' | 'wompi_card';
     estado: 'pendiente' | 'aprobado' | 'rechazado';
@@ -478,7 +489,8 @@ export interface OrderForm {
     producto: string;
     cantidad: number;
   }>;
-  direccionEntrega: string | AddressForm;
+  direccionEntrega: string | AddressForm | null;
+  tipoEntrega: DeliveryType;
   metodoPago: {
     tipo: 'PSE' | 'Nequi' | 'tarjeta_credito' | 'wompi' | 'wompi_card';
     datos: any;
