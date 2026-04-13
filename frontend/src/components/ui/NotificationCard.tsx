@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 
 export interface NotificationCardProps {
   type: 'success' | 'error' | 'warning' | 'info';

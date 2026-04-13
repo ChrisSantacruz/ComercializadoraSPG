@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import analyticsService, { AnalyticsData } from '../../services/analyticsService';
+import React, { useCallback, useEffect, useState } from 'react';
 import LoadingSpinner from '../../components/ui/LoadingSpinner';
+import analyticsService, { AnalyticsData } from '../../services/analyticsService';
 import { getFirstImageUrl } from '../../utils/imageUtils';
 
 const MerchantAnalytics: React.FC = () => {

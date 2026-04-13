@@ -1,45 +1,45 @@
 import React from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Navigate, Route, Routes } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 
 // Layouts
-import PublicLayout from '../layouts/PublicLayout';
 import DashboardLayout from '../layouts/DashboardLayout';
+import PublicLayout from '../layouts/PublicLayout';
 
 // Páginas públicas
-import NewHomePage from '../pages/NewHomePage';
 import AboutUsPage from '../pages/AboutUsPage';
-import LoginPage from '../pages/auth/LoginPage';
-import RegisterPage from '../pages/auth/RegisterPage';
-import VerifyEmailPage from '../pages/auth/VerifyEmailPage';
-import SelectRolePage from '../pages/auth/SelectRolePage';
 import CompleteMerchantProfilePage from '../pages/auth/CompleteMerchantProfilePage';
+import LoginPage from '../pages/auth/LoginPage';
 import OAuthCallback from '../pages/auth/OAuthCallback';
-import ProductsPage from '../pages/products/ProductsPage';
-import ProductDetailPage from '../pages/products/ProductDetailPage';
+import RegisterPage from '../pages/auth/RegisterPage';
+import SelectRolePage from '../pages/auth/SelectRolePage';
+import VerifyEmailPage from '../pages/auth/VerifyEmailPage';
 import CartPage from '../pages/cart/CartPage';
 import CheckoutPage from '../pages/checkout/CheckoutPage';
 import WompiReturnPageFixed from '../pages/checkout/WompiReturnPageFixed';
+import NewHomePage from '../pages/NewHomePage';
+import ProductDetailPage from '../pages/products/ProductDetailPage';
+import ProductsPage from '../pages/products/ProductsPage';
 
 // Páginas privadas - Cliente
-import ProfilePage from '../pages/profile/ProfilePage';
-import OrdersPage from '../pages/orders/OrdersPage';
-import OrderDetailPage from '../pages/orders/OrderDetailPage';
 import OrderConfirmationPage from '../pages/orders/OrderConfirmationPage';
+import OrderDetailPage from '../pages/orders/OrderDetailPage';
+import OrdersPage from '../pages/orders/OrdersPage';
 import AddressesPage from '../pages/profile/AddressesPage';
 import FavoritesPage from '../pages/profile/FavoritesPage';
+import ProfilePage from '../pages/profile/ProfilePage';
 
 // Páginas privadas - Comerciante
-import MerchantDashboard from '../pages/merchant/MerchantDashboard';
-import MerchantProducts from '../pages/merchant/MerchantProducts';
-import MerchantOrders from '../pages/merchant/MerchantOrders';
 import MerchantAnalytics from '../pages/merchant/MerchantAnalytics';
+import MerchantDashboard from '../pages/merchant/MerchantDashboard';
+import MerchantOrders from '../pages/merchant/MerchantOrders';
+import MerchantProducts from '../pages/merchant/MerchantProducts';
 import MerchantReviewsPage from '../pages/merchant/MerchantReviewsPage';
 
 // Páginas de pago
-import PaymentSuccessPage from '../pages/payment/PaymentSuccessPage';
-import PaymentPendingPage from '../pages/payment/PaymentPendingPage';
 import PaymentFailedPage from '../pages/payment/PaymentFailedPage';
+import PaymentPendingPage from '../pages/payment/PaymentPendingPage';
+import PaymentSuccessPage from '../pages/payment/PaymentSuccessPage';
 
 
 

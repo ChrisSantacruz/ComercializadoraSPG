@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { DashboardStats, AnalyticsData, Order, Product } from '../../types';
+import React, { useCallback, useEffect, useState } from 'react';
+import TopProductsWidget from '../../components/dashboard/TopProductsWidget';
+import LoadingSpinner from '../../components/ui/LoadingSpinner';
 import merchantService from '../../services/merchantService';
 import reviewService from '../../services/reviewService';
-import LoadingSpinner from '../../components/ui/LoadingSpinner';
-import TopProductsWidget from '../../components/dashboard/TopProductsWidget';
+import { AnalyticsData, DashboardStats, Order, Product } from '../../types';
 
 const MerchantDashboard: React.FC = () => {
   const [stats, setStats] = useState<DashboardStats | null>(null);

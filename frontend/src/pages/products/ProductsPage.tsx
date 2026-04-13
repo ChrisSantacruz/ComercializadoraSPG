@@ -1,11 +1,11 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Product, Category, ProductFilters } from '../../types';
-import { productService } from '../../services/productService';
-import categoryService from '../../services/categoryService';
-import { useCartStore } from '../../stores/cartStore';
 import LoadingSpinner from '../../components/ui/LoadingSpinner';
 import { useNotifications } from '../../components/ui/NotificationContainer';
+import categoryService from '../../services/categoryService';
+import { productService } from '../../services/productService';
+import { useCartStore } from '../../stores/cartStore';
+import { Category, Product, ProductFilters } from '../../types';
 import { getFirstImageUrl, handleImageError } from '../../utils/imageUtils';
 
 // Tipo para la respuesta de la API

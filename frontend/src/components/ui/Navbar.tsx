@@ -1,9 +1,8 @@
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
+import { authService } from '../../services/authService';
 import { useAuthStore } from '../../stores/authStore';
 import { useCartStore } from '../../stores/cartStore';
-import { authService } from '../../services/authService';
-import { useNavigate } from 'react-router-dom';
 
 const Navbar: React.FC = () => {
   const { isAuthenticated, logout } = useAuthStore();
