@@ -17,6 +17,7 @@ const OrderConfirmationPage: React.FC = () => {
     if (id) {
       loadOrder();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
   const loadOrder = async () => {

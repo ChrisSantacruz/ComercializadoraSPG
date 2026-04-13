@@ -9,6 +9,7 @@ const PaymentSuccessPage: React.FC = () => {
 
   useEffect(() => {
     loadOrderData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const loadOrderData = async () => {

@@ -18,6 +18,7 @@ const CartPage: React.FC = () => {
 
   useEffect(() => {
     loadCart();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Sincronizar con el store

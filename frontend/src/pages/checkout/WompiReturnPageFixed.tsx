@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import wompiService from '../../services/wompiService';
 import LoadingSpinner from '../../components/ui/LoadingSpinner';
 import { useNotificationCard } from '../../hooks/useNotificationCard';
 
@@ -33,6 +32,7 @@ const WompiReturnPageFixed: React.FC = () => {
     }, 100);
 
     return () => clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const processPaymentReturn = async () => {

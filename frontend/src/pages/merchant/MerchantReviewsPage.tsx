@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import api from '../../services/api';
-import { useAuthStore } from '../../stores/authStore';
 
 interface Review {
   _id: string;
@@ -45,11 +44,11 @@ const MerchantReviewsPage: React.FC = () => {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [selectedFilter, setSelectedFilter] = useState<string>('all');
-  const { user } = useAuthStore();
 
   useEffect(() => {
     loadReviews();
     loadStats();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, selectedFilter]);
 
   const loadReviews = async () => {

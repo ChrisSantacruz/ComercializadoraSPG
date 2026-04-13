@@ -6,7 +6,7 @@ import { authService } from '../../services/authService';
 import { useNavigate } from 'react-router-dom';
 
 const Navbar: React.FC = () => {
-  const { isAuthenticated, user, logout } = useAuthStore();
+  const { isAuthenticated, logout } = useAuthStore();
   const { getItemCount } = useCartStore();
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');

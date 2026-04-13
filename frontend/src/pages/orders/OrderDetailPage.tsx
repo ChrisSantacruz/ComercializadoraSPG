@@ -67,6 +67,7 @@ const OrderDetailPage: React.FC = () => {
 
   useEffect(() => {
     loadOrderDetail();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
   const loadOrderDetail = async () => {

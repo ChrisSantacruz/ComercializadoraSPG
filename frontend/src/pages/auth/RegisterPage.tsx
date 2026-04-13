@@ -5,7 +5,7 @@ import SocialLoginButtons from '../../components/auth/SocialLoginButtons';
 
 const RegisterPage: React.FC = () => {
   const navigate = useNavigate();
-  const { register, isLoading, error } = useAuthStore();
+  const { isLoading, error } = useAuthStore();
   
   const [formData, setFormData] = useState({
     nombre: '',

@@ -395,4 +395,5 @@ class WompiService {
   }
 }
 
-export default new WompiService();
+const wompiServiceInstance = new WompiService();
+export default wompiServiceInstance;

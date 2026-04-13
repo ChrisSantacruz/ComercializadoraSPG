@@ -45,6 +45,7 @@ const NotificationCard: React.FC<NotificationCardProps> = ({
 
       return () => clearInterval(interval);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showProgress, duration]);
 
   const handleClose = () => {

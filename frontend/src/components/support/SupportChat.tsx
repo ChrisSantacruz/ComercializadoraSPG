@@ -97,6 +97,7 @@ const SupportChat: React.FC = () => {
     if (isOpen && messages.length === 0) {
       addBotMessage(getRandomResponse('greeting'));
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
 
   useEffect(() => {

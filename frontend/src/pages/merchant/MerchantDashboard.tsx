@@ -1,12 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { DashboardStats, AnalyticsData, Order, Product } from '../../types';
 import merchantService from '../../services/merchantService';
-import orderService from '../../services/orderService';
 import reviewService from '../../services/reviewService';
 import LoadingSpinner from '../../components/ui/LoadingSpinner';
-import OrdersChart from '../../components/charts/OrdersChart';
-import RevenueChart from '../../components/charts/RevenueChart';
-import RatingsChart from '../../components/charts/RatingsChart';
 import TopProductsWidget from '../../components/dashboard/TopProductsWidget';
 
 const MerchantDashboard: React.FC = () => {

@@ -15,7 +15,7 @@ const MerchantOrders: React.FC = () => {
   const [selectedTransportadora, setSelectedTransportadora] = useState('servientrega');
   const [showTrackingModal, setShowTrackingModal] = useState(false);
   const [orderToUpdate, setOrderToUpdate] = useState<Order | null>(null);
-  const [pagination, setPagination] = useState({});
+  const [, setPagination] = useState({});
 
   // Estados disponibles para el comerciante
   const orderStatuses = [
@@ -30,6 +30,7 @@ const MerchantOrders: React.FC = () => {
 
   useEffect(() => {
     loadOrders();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filterStatus]); // Recargar cuando cambie el filtro
 
   const loadOrders = async () => {

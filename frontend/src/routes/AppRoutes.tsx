@@ -7,7 +7,6 @@ import PublicLayout from '../layouts/PublicLayout';
 import DashboardLayout from '../layouts/DashboardLayout';
 
 // Páginas públicas
-import HomePage from '../pages/HomePage';
 import NewHomePage from '../pages/NewHomePage';
 import AboutUsPage from '../pages/AboutUsPage';
 import LoginPage from '../pages/auth/LoginPage';

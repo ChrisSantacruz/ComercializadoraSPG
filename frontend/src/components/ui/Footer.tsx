@@ -189,6 +189,7 @@ const Footer: React.FC = () => {
             {/* Redes sociales */}
             <div className="mb-6 md:mb-0">
               <h4 className="text-lg font-semibold mb-4 text-blue-400">Conectar con AndinoExpress</h4>
+              {/* eslint-disable jsx-a11y/anchor-is-valid */}
               <div className="flex space-x-4">
                 <a href="#" className="text-gray-400 hover:text-blue-400 transition duration-300">
                   <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
@@ -216,6 +217,7 @@ const Footer: React.FC = () => {
                   </svg>
                 </a>
               </div>
+              {/* eslint-enable jsx-a11y/anchor-is-valid */}
             </div>
 
             {/* Certificaciones */}

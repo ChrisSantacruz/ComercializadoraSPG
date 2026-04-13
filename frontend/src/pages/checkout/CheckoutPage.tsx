@@ -90,6 +90,7 @@ const CheckoutPageOptimized: React.FC = () => {
     } else {
       setCiudadesDisponibles([]);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [newAddress.direccion.departamento]);
 
   const loadInitialData = async () => {

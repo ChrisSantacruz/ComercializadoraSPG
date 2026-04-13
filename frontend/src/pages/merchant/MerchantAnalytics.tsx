@@ -1,8 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import analyticsService, { AnalyticsData } from '../../services/analyticsService';
-import orderService from '../../services/orderService';
-import { productService } from '../../services/productService';
-import reviewService from '../../services/reviewService';
 import LoadingSpinner from '../../components/ui/LoadingSpinner';
 import { getFirstImageUrl } from '../../utils/imageUtils';
 
