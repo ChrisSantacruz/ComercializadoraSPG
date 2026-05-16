@@ -1,296 +1,326 @@
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
+import {
+  ArrowPathIcon,
+  BuildingStorefrontIcon,
+  ChatBubbleLeftRightIcon,
+  ClockIcon,
+  EnvelopeIcon,
+  GlobeAmericasIcon,
+  MapPinIcon,
+  PhoneIcon,
+  ShieldCheckIcon,
+  TruckIcon,
+  UserGroupIcon,
+} from '@heroicons/react/24/outline';
+import { Container } from '../components/ui/Container';
+import { Card, CardBody } from '../components/ui/Card';
+import { BRAND_NAME, CONTACT_ADDRESS_PUBLIC, CONTACT_EMAIL_PUBLIC, CONTACT_PHONE_DISPLAY, CONTACT_PHONE_E164 } from '../components/nav/navData';
 
-const AboutUsPage: React.FC = () => {
-  const navigate = useNavigate();
+const pillars = [
+  {
+    title: 'Operación confiable',
+    body: 'Procesos claros de pedido, pago y entrega. Menos fricción para compradores y comerciantes.',
+    icon: ShieldCheckIcon,
+  },
+  {
+    title: 'Comercio con logística',
+    body: 'Coordinamos expectativas de envío y seguimiento para que cada entrega sea trazable.',
+    icon: TruckIcon,
+  },
+  {
+    title: 'Relación transparente',
+    body: 'La relación comercial se apoya en reglas públicas de la plataforma, no en promesas genéricas.',
+    icon: BuildingStorefrontIcon,
+  },
+  {
+    title: 'Soporte dedicado',
+    body: 'Canales de atención para resolver incidencias de compra, facturación y postventa.',
+    icon: ChatBubbleLeftRightIcon,
+  },
+];
 
-  const values = [
-    {
-      icon: '🎯',
-      title: 'Calidad',
-      description: 'Seleccionamos cuidadosamente cada producto para garantizar la mejor calidad para nuestros clientes.'
-    },
-    {
-      icon: '🤝',
-      title: 'Honestidad',
-      description: 'Basamos nuestra labor en la transparencia y el trato justo con todos nuestros clientes y socios.'
-    },
-    {
-      icon: '🚚',
-      title: 'Entrega Oportuna',
-      description: 'Nos comprometemos a entregar tus productos en el menor tiempo posible y en perfectas condiciones.'
-    },
-    {
-      icon: '💝',
-      title: 'Propósito',
-      description: 'Construimos una marca con propósito que beneficie a toda la comunidad pastusa.'
-    },
-    {
-      icon: '🌟',
-      title: 'Prestigio',
-      description: 'Trabajamos cada día para mantener el prestigio y la confianza de nuestros clientes.'
-    },
-    {
-      icon: '🌍',
-      title: 'Desarrollo Social',
-      description: 'Impulsamos el bienestar colectivo y la autonomía económica de nuestras socias fundadoras.'
-    }
-  ];
+const values = [
+  {
+    title: 'Calidad',
+    body: 'Curamos la experiencia de catálogo y la coherencia entre lo publicado y lo que recibe el cliente.',
+  },
+  {
+    title: 'Honestidad',
+    body: 'Comunicación directa sobre tiempos, costos y limitaciones operativas.',
+  },
+  {
+    title: 'Compromiso regional',
+    body: 'Priorizamos el comercio digital responsable y el vínculo con proveedores locales.',
+  },
+];
 
-  const stats = [
-    { number: '10,000+', label: 'Productos', icon: '📦' },
-    { number: '50,000+', label: 'Clientes Felices', icon: '😊' },
-    { number: '500+', label: 'Comerciantes', icon: '🏪' },
-    { number: '99.5%', label: 'Satisfacción', icon: '⭐' }
-  ];
+/** Perfiles de área (sin nombres personales): refuerza confianza institucional. */
+const teamAreas = [
+  {
+    title: 'Dirección comercial',
+    body: 'Definimos alianzas con comerciantes, condiciones de publicación y lineamientos de experiencia de compra.',
+    icon: BuildingStorefrontIcon,
+  },
+  {
+    title: 'Operaciones y logística',
+    body: 'Acompañamos la coordinación de entregas, estados de pedido y comunicación entre partes.',
+    icon: TruckIcon,
+  },
+  {
+    title: 'Experiencia y producto',
+    body: 'Mejoramos continuamente el recorrido del comprador y las herramientas del comerciante.',
+    icon: UserGroupIcon,
+  },
+  {
+    title: 'Soporte y cumplimiento',
+    body: 'Atendemos consultas, incidencias y el marco de términos y privacidad de la plataforma.',
+    icon: ChatBubbleLeftRightIcon,
+  },
+];
 
-  const team = [
-    {
-      name: 'Gabby Narváez',
-      role: 'CEO & Fundadora',
-      image: '👩‍💼',
-      description: 'Visionaria líder que impulsa el desarrollo económico de las mujeres emprendedoras de Pasto'
-    },
-    {
-      name: 'Christian Santacruz',
-      role: 'Ingeniero Fullstack de Software',
-      image: '👨‍💻',
-      description: 'Experto en tecnología que desarrolla y mantiene nuestra plataforma digital'
-    },
-    {
-      name: 'Laura Agreda',
-      role: 'Directora de Marketing',
-      image: '👩‍🎨',
-      description: 'Creativa estratega que conecta marcas con personas y promueve el comercio local'
-    },
-    {
-      name: 'Pilar Narváez',
-      role: 'Directora de Mercadotecnia',
-      image: '👩‍💼',
-      description: 'Especialista en estrategias de mercado que impulsa el crecimiento de nuestros comerciantes'
-    },
-    {
-      name: 'Sofía Rosero',
-      role: 'Directora de Operaciones',
-      image: '👩‍🔧',
-      description: 'Garantiza que cada entrega llegue perfecta y a tiempo, optimizando todos nuestros procesos'
-    },
-    {
-      name: 'Fabio Narváez',
-      role: 'Líder de Atención al Cliente',
-      image: '🧑‍💼',
-      description: 'Experto en brindar un servicio excepcional y resolver cualquier inquietud de nuestros usuarios'
-    }
-  ];
+const commercialHighlights = [
+  {
+    k: 'Cobertura',
+    headline: 'Comercio nacional',
+    d: 'Pensamos el catálogo y el checkout para mover inventario dentro de Colombia, con soporte para envíos coordinados desde el momento del pedido.',
+  },
+  {
+    k: 'Modelo',
+    headline: 'Comerciantes y compradores en un mismo sitio',
+    d: `${BRAND_NAME} agrupa inventario validado con herramientas simples de venta: publicar, cobrar y gestionar pedidos desde un mismo entorno.`,
+  },
+  {
+    k: 'Compromiso',
+    headline: 'Crecimiento sostenido',
+    d: 'Apostamos por relaciones de largo plazo: reputación del vendedor, claridad en precios y seguimiento serio después de la compra.',
+  },
+];
 
-  return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Hero Section */}
-      <div className="relative bg-gradient-to-br from-blue-600 via-purple-600 to-indigo-700 text-white overflow-hidden">
-        {/* Background Pattern */}
-        <div className="absolute inset-0 bg-black opacity-10"></div>
-        <div className="absolute inset-0 bg-gradient-to-r from-blue-500/20 to-purple-500/20"></div>
-        
-        {/* Decorative Elements */}
-        <div className="absolute top-0 left-0 w-72 h-72 bg-white/10 rounded-full -translate-x-1/2 -translate-y-1/2"></div>
-        <div className="absolute bottom-0 right-0 w-96 h-96 bg-white/5 rounded-full translate-x-1/2 translate-y-1/2"></div>
-        
-        <div className="relative container mx-auto px-4 py-32">
-          <div className="text-center max-w-6xl mx-auto">
-            {/* Main Title */}
-            <div className="mb-8">
-              <h1 className="text-6xl md:text-8xl font-bold mb-6 bg-gradient-to-r from-white to-blue-100 bg-clip-text text-transparent">
-                Sobre Nosotros
-              </h1>
-              <div className="text-8xl mb-6">🏢</div>
-            </div>
-            
-            {/* Subtitle */}
-            <p className="text-2xl md:text-3xl mb-8 text-gray-100 leading-relaxed max-w-4xl mx-auto">
-              Somos más que una plataforma de comercio electrónico. 
-              <br />
-              <span className="font-semibold text-white">Somos tu socio en el éxito.</span>
-            </p>
-            
-            {/* Additional Info */}
-            <div className="mt-12 grid md:grid-cols-3 gap-8 max-w-4xl mx-auto">
-              <div className="bg-white/10 backdrop-blur-sm rounded-xl p-6 border border-white/20">
-                <div className="text-4xl mb-3">🎯</div>
-                <h3 className="text-lg font-semibold mb-2">Misión Clara</h3>
-                <p className="text-sm text-gray-200">Conectar personas con lo que realmente necesitan</p>
-              </div>
-              <div className="bg-white/10 backdrop-blur-sm rounded-xl p-6 border border-white/20">
-                <div className="text-4xl mb-3">🌟</div>
-                <h3 className="text-lg font-semibold mb-2">Propósito Social</h3>
-                <p className="text-sm text-gray-200">Impulsar el desarrollo económico de Pasto</p>
-              </div>
-              <div className="bg-white/10 backdrop-blur-sm rounded-xl p-6 border border-white/20">
-                <div className="text-4xl mb-3">🤝</div>
-                <h3 className="text-lg font-semibold mb-2">Comunidad</h3>
-                <p className="text-sm text-gray-200">Empoderar a las mujeres emprendedoras</p>
-              </div>
-            </div>
-            
-            {/* Call to Action */}
-            <div className="mt-12 mb-16">
-              <button 
-                onClick={() => navigate('/register')}
-                className="bg-white text-blue-600 px-8 py-4 rounded-full font-semibold text-lg hover:bg-gray-100 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105"
-              >
-                🚀 Únete a AndinoExpress
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Mission, Vision, Values */}
-      <div className="container mx-auto px-4 py-20">
-        <div className="grid lg:grid-cols-3 gap-8 mb-20">
-          {/* Misión */}
-          <div className="bg-white rounded-xl shadow-lg p-10 text-center hover:shadow-2xl transition-shadow duration-300">
-            <div className="text-6xl mb-6">🎯</div>
-            <h3 className="text-2xl font-bold text-gray-900 mb-4">Nuestra Misión</h3>
-            <p className="text-gray-600 leading-relaxed">
-              En AndinoExpress trabajamos con pasión para conectar a las personas 
-              con lo que realmente necesitan y desean, ofreciendo soluciones innovadoras y accesibles 
-              que respondan a sus gustos, estilos de vida y aspiraciones. Nos proyectamos como una 
-              plataforma dinámica y confiable que, a través del comercio consciente y el uso de 
-              herramientas digitales, impulsa el bienestar colectivo, la autonomía económica de 
-              nuestras socias fundadoras y el desarrollo social de nuestro entorno.
-            </p>
-          </div>
-
-          {/* Visión */}
-          <div className="bg-white rounded-xl shadow-lg p-10 text-center hover:shadow-2xl transition-shadow duration-300">
-            <div className="text-6xl mb-6">🔮</div>
-            <h3 className="text-2xl font-bold text-gray-900 mb-4">Nuestra Visión</h3>
-            <p className="text-gray-600 leading-relaxed">
-              Ser la plataforma de comercio electrónico líder en el sur de Colombia, 
-              reconocida por democratizar las oportunidades de venta online y crear 
-              un ecosistema próspero que impulse el desarrollo económico de Pasto 
-              y la región, basándonos en la calidad, la honestidad, el trato justo, 
-              la entrega oportuna y la construcción de una marca con propósito y prestigio.
-            </p>
-          </div>
-
-          {/* Historia */}
-          <div className="bg-white rounded-xl shadow-lg p-10 text-center hover:shadow-2xl transition-shadow duration-300">
-            <div className="text-6xl mb-6">📖</div>
-            <h3 className="text-2xl font-bold text-gray-900 mb-4">Nuestra Historia</h3>
-            <p className="text-gray-600 leading-relaxed">
-              Fundada en 2024, AndinoExpress nació 
-              del sueño de empoderar a las mujeres emprendedoras y comerciantes locales en Colombia. 
-              Basamos nuestra labor en la calidad, la honestidad, el trato justo, 
-              la entrega oportuna y la construcción de una marca con propósito y prestigio 
-              que beneficie a toda la comunidad pastusa.
-            </p>
-          </div>
-        </div>
-
-        {/* Estadísticas */}
-        <div className="bg-gradient-to-r from-blue-600 to-purple-600 rounded-2xl p-8 text-white mb-16">
-          <h3 className="text-3xl font-bold text-center mb-8">Nuestros Números Hablan 📊</h3>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-8">
-            {stats.map((stat, index) => (
-              <div key={index} className="text-center">
-                <div className="text-4xl mb-2">{stat.icon}</div>
-                <div className="text-3xl font-bold mb-1">{stat.number}</div>
-                <div className="text-blue-100">{stat.label}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Valores */}
-        <div className="mb-16">
-          <div className="text-center mb-12">
-            <h3 className="text-3xl font-bold text-gray-900 mb-4">Nuestros Valores 💎</h3>
-            <p className="text-gray-600 max-w-2xl mx-auto">
-              Los principios que guían cada decisión y acción en AndinoExpress
-            </p>
-          </div>
-          
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {values.map((value, index) => (
-              <div key={index} className="bg-white rounded-xl shadow-md p-6 hover:shadow-lg transition-shadow">
-                <div className="text-4xl mb-4">{value.icon}</div>
-                <h4 className="text-xl font-semibold text-gray-900 mb-3">{value.title}</h4>
-                <p className="text-gray-600 text-sm leading-relaxed">{value.description}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Equipo */}
-        <div className="mb-16">
-          <div className="text-center mb-12">
-            <h3 className="text-3xl font-bold text-gray-900 mb-4">Nuestro Equipo 👥</h3>
-            <p className="text-gray-600 max-w-2xl mx-auto">
-              Las personas apasionadas que hacen posible AndinoExpress cada día
-            </p>
-          </div>
-          
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {team.map((member, index) => (
-              <div key={index} className="bg-white rounded-xl shadow-md p-6 text-center hover:shadow-lg transition-shadow">
-                <div className="text-6xl mb-4">{member.image}</div>
-                <h4 className="text-xl font-semibold text-gray-900 mb-1">{member.name}</h4>
-                <p className="text-blue-600 font-medium mb-3">{member.role}</p>
-                <p className="text-gray-600 text-sm">{member.description}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Compromiso */}
-        <div className="bg-gradient-to-r from-green-50 to-blue-50 rounded-2xl p-8 mb-16">
-          <div className="text-center">
-            <h3 className="text-3xl font-bold text-gray-900 mb-6">Nuestro Compromiso 🤝</h3>
-            <div className="grid md:grid-cols-3 gap-8">
-              <div>
-                <div className="text-4xl mb-3">🛡️</div>
-                <h4 className="font-semibold mb-2">Seguridad</h4>
-                <p className="text-sm text-gray-600">Protegemos tus datos y transacciones con la más alta tecnología</p>
-              </div>
-              <div>
-                <div className="text-4xl mb-3">📞</div>
-                <h4 className="font-semibold mb-2">Soporte 24/7</h4>
-                <p className="text-sm text-gray-600">Estamos aquí cuando nos necesites, cualquier día del año</p>
-              </div>
-              <div>
-                <div className="text-4xl mb-3">🚀</div>
-                <h4 className="font-semibold mb-2">Innovación</h4>
-                <p className="text-sm text-gray-600">Mejoramos constantemente para ofrecerte la mejor experiencia</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Call to Action */}
-      <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white py-16">
-        <div className="container mx-auto px-4 text-center">
-          <h3 className="text-3xl font-bold mb-4">¿Listo para ser parte de SPG? 🎉</h3>
-          <p className="text-xl mb-8">Únete a miles de colombianos que confían en nosotros</p>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <button
-              onClick={() => navigate('/register')}
-              className="bg-white text-blue-600 px-8 py-3 rounded-lg font-semibold hover:bg-gray-100 transition-colors"
+const AboutUsPage: React.FC = () => (
+  <div className="min-w-0 bg-white">
+    <section className="border-b border-gray-200 bg-gray-50">
+      <Container className="py-14 sm:py-20">
+        <div className="max-w-3xl">
+          <p className="text-xs font-semibold uppercase tracking-wider text-primary-700">Sobre nosotros</p>
+          <h1 className="mt-3 font-display text-3xl font-semibold tracking-tight text-gray-900 sm:text-4xl">
+            {BRAND_NAME}: comercialización digital con criterio de operador logístico
+          </h1>
+          <p className="mt-4 text-base leading-relaxed text-gray-600 sm:text-lg">
+            Somos una comercializadora enfocada en acercar oferta confiable al comprador y en dar al comerciante un canal
+            claro para vender. Diseño sobrio, flujos entendibles y atención a lo que ocurre después del clic en &quot;pagar&quot;.
+          </p>
+          <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+            <Link
+              to="/register"
+              className="inline-flex h-10 w-full items-center justify-center rounded-lg bg-secondary-500 px-5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-secondary-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-secondary-300 sm:w-auto"
             >
-              🛍️ Empezar a Comprar
-            </button>
-            <button
-              onClick={() => navigate('/register')}
-              className="border-2 border-white text-white px-8 py-3 rounded-lg font-semibold hover:bg-white hover:text-blue-600 transition-colors"
+              Crear cuenta
+            </Link>
+            <Link
+              to="/productos"
+              className="inline-flex h-10 w-full items-center justify-center rounded-lg border border-gray-300 bg-white px-5 text-sm font-semibold text-gray-800 shadow-sm transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 sm:w-auto"
             >
-              🏪 Vender con Nosotros
-            </button>
+              Ver catálogo
+            </Link>
           </div>
         </div>
-      </div>
-    </div>
-  );
-};
+      </Container>
+    </section>
 
-export default AboutUsPage; 
+    <section aria-label="Enfoque comercial" className="border-b border-gray-200 bg-white">
+      <Container className="grid gap-px bg-gray-200 sm:grid-cols-3">
+        {commercialHighlights.map((s) => (
+          <article key={s.k} className="bg-white px-6 py-8">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-primary-700">{s.k}</p>
+            <p className="mt-2 font-display text-lg font-semibold text-gray-900">{s.headline}</p>
+            <p className="mt-2 text-sm leading-relaxed text-gray-600">{s.d}</p>
+          </article>
+        ))}
+      </Container>
+    </section>
+
+    <Container className="space-y-16 py-14 sm:py-16">
+      <section aria-labelledby="equipo-heading">
+        <div className="mb-8 max-w-2xl">
+          <h2 id="equipo-heading" className="font-display text-2xl font-semibold tracking-tight text-gray-900 sm:text-3xl">
+            Equipo y áreas
+          </h2>
+          <p className="mt-2 text-sm leading-relaxed text-gray-600 sm:text-base">
+            Trabajamos en equipos funcionales coordinados como una operadora: comercial, operaciones, producto y soporte
+            comparten los mismos indicadores de satisfacción y cumplimiento.
+          </p>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {teamAreas.map((m) => {
+            const Icon = m.icon;
+            return (
+              <Card key={m.title} className="border-gray-200">
+                <CardBody className="p-5">
+                  <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-accent-900/5 text-accent-800 ring-1 ring-accent-900/10">
+                    <Icon className="h-5 w-5" aria-hidden />
+                  </div>
+                  <h3 className="text-sm font-semibold text-gray-900">{m.title}</h3>
+                  <p className="mt-2 text-xs leading-relaxed text-gray-600 sm:text-sm">{m.body}</p>
+                </CardBody>
+              </Card>
+            );
+          })}
+        </div>
+      </section>
+
+      <section
+        id="contacto-institucional"
+        aria-labelledby="contacto-institucional-heading"
+        className="rounded-2xl border border-gray-200 bg-gray-50/80 px-6 py-10 sm:px-10"
+      >
+        <div className="grid gap-8 lg:grid-cols-12 lg:items-start">
+          <div className="lg:col-span-5">
+            <h2
+              id="contacto-institucional-heading"
+              className="font-display text-xl font-semibold text-gray-900 sm:text-2xl"
+            >
+              Contacto institucional
+            </h2>
+            <p className="mt-3 text-sm leading-relaxed text-gray-600">
+              Coordinación desde Pasto (Nariño). Para propuestas, pedidos o alianzas utiliza correo, teléfono o el
+              formulario que abre tu gestor de correo con el mensaje listo.
+            </p>
+            <Link
+              to="/contacto"
+              className="mt-6 inline-flex h-10 items-center justify-center rounded-lg bg-accent-900 px-5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-accent-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400"
+            >
+              Abrir formulario de mensaje
+            </Link>
+          </div>
+          <ul className="grid gap-4 sm:grid-cols-2 lg:col-span-7">
+            <li className="flex gap-3 rounded-xl border border-gray-200 bg-white p-4 shadow-soft">
+              <EnvelopeIcon className="mt-0.5 h-5 w-5 shrink-0 text-primary-600" aria-hidden />
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Correo</p>
+                <a
+                  className="mt-1 break-all text-sm font-medium text-gray-900 hover:text-primary-700"
+                  href={`mailto:${CONTACT_EMAIL_PUBLIC}`}
+                >
+                  {CONTACT_EMAIL_PUBLIC}
+                </a>
+                <p className="mt-1 text-xs text-gray-500">
+                  También puedes escribirnos desde{' '}
+                  <Link className="font-medium text-primary-700 hover:underline" to="/contacto">
+                    el formulario web
+                  </Link>{' '}
+                  (abre tu correo con el mensaje preparado).
+                </p>
+              </div>
+            </li>
+            <li className="flex gap-3 rounded-xl border border-gray-200 bg-white p-4 shadow-soft">
+              <PhoneIcon className="mt-0.5 h-5 w-5 shrink-0 text-primary-600" aria-hidden />
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Teléfono</p>
+                <a
+                  className="mt-1 text-sm font-medium text-gray-900 hover:text-primary-700"
+                  href={`tel:${CONTACT_PHONE_E164}`}
+                >
+                  +57 {CONTACT_PHONE_DISPLAY}
+                </a>
+                <p className="mt-1 text-xs text-gray-500">Línea de información comercial.</p>
+              </div>
+            </li>
+            <li className="flex gap-3 rounded-xl border border-gray-200 bg-white p-4 shadow-soft">
+              <MapPinIcon className="mt-0.5 h-5 w-5 shrink-0 text-primary-600" aria-hidden />
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Ubicación</p>
+                <p className="mt-1 text-sm font-medium text-gray-900">{CONTACT_ADDRESS_PUBLIC}</p>
+              </div>
+            </li>
+            <li className="flex gap-3 rounded-xl border border-gray-200 bg-white p-4 shadow-soft">
+              <ClockIcon className="mt-0.5 h-5 w-5 shrink-0 text-primary-600" aria-hidden />
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Horario</p>
+                <p className="mt-1 text-sm font-medium text-gray-900">Lun · Vie · 8:00 – 18:00</p>
+              </div>
+            </li>
+          </ul>
+        </div>
+      </section>
+
+      <section className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+        {pillars.map((p) => {
+          const Icon = p.icon;
+          return (
+            <Card key={p.title} className="border-gray-200">
+              <CardBody className="p-5">
+                <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-primary-50 text-primary-700">
+                  <Icon className="h-6 w-6" aria-hidden />
+                </div>
+                <h2 className="font-display text-sm font-semibold text-gray-900">{p.title}</h2>
+                <p className="mt-2 text-sm leading-relaxed text-gray-600">{p.body}</p>
+              </CardBody>
+            </Card>
+          );
+        })}
+      </section>
+
+      <section className="grid gap-10 lg:grid-cols-2 lg:items-center">
+        <div>
+          <h2 className="font-display text-2xl font-semibold text-gray-900 sm:text-3xl">Cómo trabajamos</h2>
+          <p className="mt-3 text-sm leading-relaxed text-gray-600 sm:text-base">
+            Unimos catálogo, carrito y cobro para que cada parte sepa en qué punto está la operación. Los comerciantes
+            publican con reglas claras; los compradores pueden seguir pedidos desde su cuenta.
+          </p>
+          <ul className="mt-6 space-y-3 text-sm text-gray-700">
+            <li className="flex gap-2">
+              <ArrowPathIcon className="mt-0.5 h-5 w-5 shrink-0 text-primary-600" aria-hidden />
+              <span>Mejora continua en móvil, tablet y escritorio, con la misma información en todos los dispositivos.</span>
+            </li>
+            <li className="flex gap-2">
+              <GlobeAmericasIcon className="mt-0.5 h-5 w-5 shrink-0 text-primary-600" aria-hidden />
+              <span>Operación centrada en Colombia, precios en pesos colombianos y pagos locales.</span>
+            </li>
+          </ul>
+        </div>
+        <Card className="border-gray-200 bg-gray-50/80">
+          <CardBody className="p-6 sm:p-8">
+            <h3 className="text-sm font-semibold uppercase tracking-wide text-gray-500">Valores</h3>
+            <ul className="mt-4 space-y-4">
+              {values.map((v) => (
+                <li key={v.title} className="border-l-2 border-primary-500 pl-4">
+                  <p className="font-medium text-gray-900">{v.title}</p>
+                  <p className="mt-1 text-sm text-gray-600">{v.body}</p>
+                </li>
+              ))}
+            </ul>
+          </CardBody>
+        </Card>
+      </section>
+
+      <section className="rounded-2xl border border-gray-200 bg-accent-950 px-6 py-10 text-emerald-50 sm:px-10">
+        <div className="mx-auto max-w-2xl text-center">
+          <p className="text-xs font-semibold uppercase tracking-wider text-primary-300">Próximo paso</p>
+          <h2 className="mt-3 font-display text-2xl font-semibold sm:text-3xl text-white">
+            ¿Listo para comprar o vender con nosotros?
+          </h2>
+          <p className="mt-3 text-sm text-emerald-200/90 sm:text-base">
+            Crea tu cuenta en minutos o revisa el catálogo público antes de registrarte.
+          </p>
+          <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
+            <Link
+              to="/register"
+              className="inline-flex h-10 items-center justify-center rounded-lg bg-secondary-500 px-5 text-sm font-semibold text-white transition-colors hover:bg-secondary-600"
+            >
+              Registrarse
+            </Link>
+            <Link
+              to="/contacto"
+              className="inline-flex h-10 items-center justify-center rounded-lg border border-white/25 bg-transparent px-5 text-sm font-semibold text-white transition-colors hover:bg-white/10"
+            >
+              Solicitar información
+            </Link>
+          </div>
+        </div>
+      </section>
+    </Container>
+  </div>
+);
+
+export default AboutUsPage;

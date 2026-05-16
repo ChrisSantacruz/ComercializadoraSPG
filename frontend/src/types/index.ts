@@ -29,7 +29,7 @@ export interface User {
     codigoPostal?: string;
     pais?: string;
   };
-  rol: 'cliente' | 'comerciante';
+  rol: 'cliente' | 'comerciante' | null;
   nombreEmpresa?: string;
   descripcionEmpresa?: string;
   categoriaEmpresa?: string;
@@ -45,6 +45,9 @@ export interface User {
   estado: 'activo' | 'inactivo' | 'bloqueado';
   fechaCreacion: string;
   fechaActualizacion: string;
+  /** Documento de identificación (p. ej. cédula) — opcional; usado en pagos */
+  tipoDocumento?: string;
+  numeroDocumento?: string;
   configuracionNotificaciones?: {
     email: boolean;
     push: boolean;
@@ -62,6 +65,7 @@ export interface User {
 export interface AuthResponse {
   usuario: User;
   token: string;
+  refreshToken?: string | null;
 }
 
 export interface LoginCredentials {
@@ -133,6 +137,7 @@ export interface Product {
     totalVendido: number;
     totalIngresos: number;
   };
+  precioOferta?: number;
 }
 
 export interface ProductForm {
@@ -270,16 +275,45 @@ export interface Order {
   costoEnvio: number;
   descuentos: number;
   total: number;
-  estado: 'pendiente' | 'confirmado' | 'procesando' | 'enviado' | 'entregado' | 'cancelado';
-  direccionEntrega: OrderDeliveryAddress | Address; // Puede ser cualquiera de las dos estructuras
+  estado:
+    | 'pendiente'
+    | 'confirmado'
+    | 'procesando'
+    | 'enviado'
+    | 'entregado'
+    | 'cancelado'
+    | 'payment_pending'
+    | 'payment_failed'
+    | 'devuelto'
+    | 'paid';
+  direccionEntrega: OrderDeliveryAddress | Address;
   metodoPago: {
     tipo: 'PSE' | 'Nequi' | 'tarjeta_credito' | 'wompi' | 'wompi_card';
-    estado: 'pendiente' | 'aprobado' | 'rechazado';
+    estado: 'pendiente' | 'aprobado' | 'rechazado' | 'procesando';
     transaccionId?: string;
     fechaPago?: string;
   };
   fechaCreacion: string;
   fechaActualizacion: string;
+  historialEstados?: Array<{ estado: string; fecha: string; comentario?: string }>;
+  paymentInfo?: {
+    paymentStatus?: string;
+    failureReason?: string;
+    transactionId?: string;
+    paidAt?: string;
+  };
+  envio?: {
+    empresa?: string;
+    numeroGuia?: string;
+    fechaEnvio?: string;
+    fechaEntregaEstimada?: string;
+    fechaEntregaReal?: string;
+  };
+  seguimiento?: {
+    numeroSeguimiento?: string;
+    transportadora?: string;
+    fechaEnvio?: string;
+  };
 }
 
 // Reseñas

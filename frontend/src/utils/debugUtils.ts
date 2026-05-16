@@ -3,69 +3,69 @@
  */
 
 import { getImageUrl } from './imageUtils';
+import { log } from '../lib/observability/logger';
 
 /**
  * Verifica si el backend está respondiendo
  */
 export const checkBackendConnection = async (): Promise<boolean> => {
-  const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
-  
+  const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5001';
+
   try {
     const response = await fetch(`${API_BASE_URL}/`);
     if (response.ok) {
       const data = await response.json();
       if (process.env.NODE_ENV === 'development') {
-        console.log('✅ Backend conectado:', data.message || 'OK');
+        log.debug('backend.ping.ok', { message: data.message || 'OK' });
       }
       return true;
     }
     return false;
   } catch (error) {
     if (process.env.NODE_ENV === 'development') {
-      console.error('❌ Backend no responde:', error);
+      log.debug('backend.ping.fail', { error });
     }
     return false;
   }
-}; 
+};
 
 /**
  * Función de debug para verificar las URLs de las imágenes en los pedidos
  */
-export const debugOrderImages = (order: any) => {
-  console.log('🔍 Debug de imágenes del pedido:', order.numeroOrden);
-  
+export const debugOrderImages = (order: any): void => {
+  log.debug('order.images.debug', { orden: order?.numeroOrden });
+
   if (order.productos && Array.isArray(order.productos)) {
     order.productos.forEach((item: any, index: number) => {
-      console.log(`   Producto ${index + 1}: ${item.producto?.nombre || 'Sin nombre'}`);
-      console.log(`     - Campo imagen del pedido:`, item.imagen);
-      console.log(`     - Tipo de imagen del pedido:`, typeof item.imagen);
-      console.log(`     - Imágenes del producto:`, item.producto?.imagenes);
-      
-      // Probar diferentes formas de obtener la imagen
+      log.debug(`order.images.item.${index}`, {
+        nombre: item.producto?.nombre || 'Sin nombre',
+        imagenPedido: item.imagen,
+        imagenesProducto: item.producto?.imagenes,
+      });
+
       const imagenPedido = item.imagen;
       const imagenProducto = item.producto?.imagenes?.[0];
       const imagenProductoUrl = item.producto?.imagenes?.[0]?.url;
-      
-      // Intentar procesar la imagen del pedido de forma segura
+
       try {
         const urlFinalPedido = getImageUrl(imagenPedido);
-        console.log(`     - URL final (imagen del pedido): ${urlFinalPedido}`);
+        log.debug('order.images.resolve.pedido', { url: urlFinalPedido });
       } catch (error) {
-        console.error(`     - Error procesando imagen del pedido:`, error);
+        log.warn('order.images.error.pedido', { error });
       }
-      
+
       try {
         const urlFinalProducto = getImageUrl(imagenProducto);
-        console.log(`     - URL final (imagen del producto): ${urlFinalProducto}`);
+        log.debug('order.images.resolve.producto', { url: urlFinalProducto });
       } catch (error) {
-        console.error(`     - Error procesando imagen del producto:`, error);
+        log.warn('order.images.error.producto', { error });
       }
-      
+
       try {
         const urlFinalProductoUrl = getImageUrl(imagenProductoUrl);
-        console.log(`     - URL final (imagen del producto .url): ${urlFinalProductoUrl}`);
+        log.debug('order.images.resolve.productoUrl', { url: urlFinalProductoUrl });
       } catch (error) {
-        console.error(`     - Error procesando imagen del producto .url:`, error);
+        log.warn('order.images.error.productoUrl', { error });
       }
     });
   }
@@ -79,7 +79,7 @@ export const testImageUrl = async (url: string): Promise<boolean> => {
     const response = await fetch(url, { method: 'HEAD' });
     return response.ok;
   } catch (error) {
-    console.error('Error verificando URL de imagen:', url, error);
+    log.warn('image.url.head.fail', { url, error });
     return false;
   }
-}; 
+};

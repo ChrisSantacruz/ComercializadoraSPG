@@ -7,19 +7,7 @@ const compression = require('compression');
 const cookieParser = require('cookie-parser');
 const rateLimit = require('express-rate-limit');
 const path = require('path');
-// Configurar variables de entorno por defecto si no existen
 require('dotenv').config();
-
-// Variables por defecto si no hay archivo .env
-if (!process.env.MONGODB_URI) {
-  process.env.MONGODB_URI = 'mongodb://localhost:27017/comercializadora_spg';
-}
-if (!process.env.JWT_SECRET) {
-  process.env.JWT_SECRET = 'mi_secreto_jwt_comercializadora_2024';
-}
-if (!process.env.PORT) {
-  process.env.PORT = '5000';
-}
 
 // Importar configuración de base de datos
 const connectDB = require('./config/database');
@@ -43,29 +31,65 @@ const maintenanceRoutes = require('./routes/maintenanceRoutes');
 // Importar middlewares
 const errorHandler = require('./middlewares/errorHandler');
 const notFound = require('./middlewares/notFound');
+const requestContext = require('./middlewares/requestContext');
+const logger = require('./utils/logger');
+
+// Variables por defecto locales — alinear con frontend `config/env` (API 5001) y `.env.example`
+if (!process.env.MONGODB_URI) {
+  process.env.MONGODB_URI = 'mongodb://localhost:27017/comercializadora_spg';
+}
+
+const isProduction = process.env.NODE_ENV === 'production';
+
+if (!process.env.JWT_SECRET) {
+  if (isProduction) {
+    logger.error('env_invalid', { msg: 'JWT_SECRET is required in production' });
+    process.exit(1);
+  }
+  process.env.JWT_SECRET = 'local-dev-only-unsafe-set-JWT_SECRET-in-backend-env';
+  logger.warn('jwt_dev_fallback', {
+    msg: 'JWT_SECRET missing; using dev-only placeholder. Copy backend/.env.example → .env and set JWT_SECRET.',
+  });
+}
+
+if (!process.env.PORT) {
+  process.env.PORT = '5001';
+}
 
 // Importar configuración de Passport
 const passport = require('./config/passport');
 
 // Configuración de la aplicación
 const app = express();
-const PORT = process.env.PORT || 5000;
+const PORT = Number(process.env.PORT) || 5001;
 
 // Configurar trust proxy para Render (necesario para rate limiting y CORS)
 app.set('trust proxy', 1);
 
+app.use(requestContext);
+
 // Middlewares de seguridad
-app.use(helmet());
+app.use(
+  helmet({
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
+    referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
+    ...(isProduction
+      ? {
+          hsts: { maxAge: 31536000, includeSubDomains: true, preload: false },
+        }
+      : {}),
+  }),
+);
 app.use(compression());
 
-// Rate limiting - Más permisivo para desarrollo
+// Rate limiting — production default tighter (override via RATE_LIMIT_MAX)
 const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutos
-  max: 1000, // límite de 1000 requests por ventana de tiempo (más permisivo)
+  windowMs: 15 * 60 * 1000,
+  max: isProduction ? Math.max(60, Number(process.env.RATE_LIMIT_MAX || 400)) : 1000,
   message: 'Demasiadas peticiones desde esta IP, intenta de nuevo en 15 minutos.',
   standardHeaders: true,
   legacyHeaders: false,
-  skipSuccessfulRequests: true // No contar requests exitosos
+  skipSuccessfulRequests: true,
 });
 app.use('/api/', limiter);
 
@@ -87,37 +111,53 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cookieParser());
 
-// Configuración de CORS - Más permisiva para desarrollo y producción
+// CORS — production: whitelist only (DEC-AUTH-001 / staging hardening)
+const allowedOrigins = [
+  'http://localhost:3000',
+  'http://localhost:3001',
+  'http://127.0.0.1:3000',
+  'http://127.0.0.1:3001',
+  'https://andinoexpress.com',
+  'https://www.andinoexpress.com',
+  process.env.FRONTEND_URL,
+  process.env.ADMIN_URL,
+]
+  .filter(Boolean)
+  .map((o) => String(o).replace(/\/$/, ''));
+
 const corsOptions = {
   origin: function (origin, callback) {
-    // Permitir requests sin origin (como mobile apps, curl, postman)
-    if (!origin) return callback(null, true);
-    
-    const allowedOrigins = [
-      'http://localhost:3000',
-      'http://localhost:3001',
-      'http://127.0.0.1:3000',
-      'http://127.0.0.1:3001',
-      'https://andinoexpress.com',
-      'https://www.andinoexpress.com',
-      process.env.FRONTEND_URL,
-      process.env.ADMIN_URL
-    ].filter(Boolean); // Filtrar valores undefined
-    
-    if (allowedOrigins.indexOf(origin) !== -1 || process.env.NODE_ENV === 'development') {
-      callback(null, true);
-    } else {
-      console.log('⚠️  Origin not allowed by CORS:', origin);
-      callback(null, true); // En producción, ser permisivo pero logear
+    if (!origin) {
+      if (isProduction && process.env.CORS_ALLOW_NO_ORIGIN !== 'true') {
+        logger.warn('cors_missing_origin', {});
+        return callback(new Error('Not allowed by CORS'));
+      }
+      return callback(null, true);
     }
+    const normalized = String(origin).replace(/\/$/, '');
+    if (!isProduction || allowedOrigins.includes(normalized)) {
+      return callback(null, true);
+    }
+    logger.warn('cors_blocked', { origin: normalized });
+    return callback(new Error('Not allowed by CORS'));
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Origin', 'Accept', 'X-Signature', 'X-Timestamp'],
-  exposedHeaders: ['Content-Range', 'X-Content-Range'],
+  allowedHeaders: [
+    'Content-Type',
+    'Authorization',
+    'X-Requested-With',
+    'X-Request-Id',
+    'Idempotency-Key',
+    'Origin',
+    'Accept',
+    'X-Signature',
+    'X-Timestamp',
+  ],
+  exposedHeaders: ['Content-Range', 'X-Content-Range', 'X-Request-Id'],
   optionsSuccessStatus: 200,
   preflightContinue: false,
-  maxAge: 86400 // 24 horas
+  maxAge: 86400,
 };
 app.use(cors(corsOptions));
 
@@ -128,8 +168,11 @@ app.options('*', cors(corsOptions));
 app.use('/api/uploads', (req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
   res.header('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
-  
+  res.header(
+    'Access-Control-Allow-Headers',
+    'Origin, X-Requested-With, Content-Type, Accept, Authorization, X-Request-Id, Idempotency-Key',
+  );
+
   if (req.method === 'OPTIONS') {
     res.sendStatus(200);
   } else {
@@ -140,7 +183,10 @@ app.use('/api/uploads', (req, res, next) => {
 app.use('/uploads', (req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
   res.header('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+  res.header(
+    'Access-Control-Allow-Headers',
+    'Origin, X-Requested-With, Content-Type, Accept, Authorization, X-Request-Id, Idempotency-Key',
+  );
   
   if (req.method === 'OPTIONS') {
     res.sendStatus(200);
@@ -149,15 +195,34 @@ app.use('/uploads', (req, res, next) => {
   }
 });
 
-// Middleware de logging específico para rutas importantes
+// Middleware de logging específico para rutas sensibles — sin credenciales en logs
+function redactBody(obj) {
+  if (!obj || typeof obj !== 'object') return obj;
+  const sensitive = /password|contrase|token|refresh|secret|authorization|jwt/i;
+  const next = Array.isArray(obj) ? [...obj] : { ...obj };
+  for (const k of Object.keys(next)) {
+    if (sensitive.test(k)) next[k] = '[REDACTED]';
+  }
+  return next;
+}
+
 app.use((req, res, next) => {
   if (req.url.includes('/wompi/') || req.url.includes('/auth/')) {
-    console.log(`🔍 ${new Date().toISOString()} - ${req.method} ${req.url}`);
-    if (req.body && Object.keys(req.body).length > 0) {
-      console.log('📝 Body:', JSON.stringify(req.body, null, 2));
-    }
-    if (req.headers.authorization) {
-      console.log('🔑 Auth header present');
+    if (process.env.NODE_ENV === 'development') {
+      logger.debug('sensitive_route', {
+        requestId: req.requestId,
+        method: req.method,
+        url: req.url,
+        body:
+          req.body && Object.keys(req.body).length > 0 ? redactBody(req.body) : undefined,
+        hasAuthHeader: Boolean(req.headers.authorization),
+      });
+    } else {
+      logger.info('sensitive_route', {
+        requestId: req.requestId,
+        method: req.method,
+        path: req.path,
+      });
     }
   }
   next();
@@ -172,7 +237,10 @@ app.use('/api/uploads', express.static(path.join(__dirname, 'uploads'), {
     // Configuración CORS más permisiva para archivos estáticos
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+    res.setHeader(
+      'Access-Control-Allow-Headers',
+      'Content-Type, Authorization, X-Requested-With, X-Request-Id, Idempotency-Key',
+    );
     res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
     res.setHeader('Cross-Origin-Embedder-Policy', 'unsafe-none');
     
@@ -188,7 +256,10 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads'), {
   setHeaders: (res, filePath) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+    res.setHeader(
+      'Access-Control-Allow-Headers',
+      'Content-Type, Authorization, X-Requested-With, X-Request-Id, Idempotency-Key',
+    );
     res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
     res.setHeader('Cross-Origin-Embedder-Policy', 'unsafe-none');
     
@@ -223,6 +294,21 @@ app.get('/', (req, res) => {
   });
 });
 
+// Liveness / readiness lightweight (load balancers)
+app.get('/api/health', (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  const dbState = mongoose.connection.readyState;
+  const dbOk = dbState === 1;
+  res.status(dbOk ? 200 : 503).json({
+    ok: dbOk,
+    uptime: process.uptime(),
+    env: process.env.NODE_ENV || 'development',
+    timestamp: new Date().toISOString(),
+    requestId: req.requestId,
+    mongo: { readyState: dbState, connected: dbOk },
+  });
+});
+
 // Ruta de prueba para verificar que las rutas de auth funcionan
 app.get('/api/auth/test', (req, res) => {
   res.json({
@@ -237,119 +323,121 @@ app.get('/api/auth/test', (req, res) => {
   });
 });
 
-// RUTA TEMPORAL PARA CREAR ADMINISTRADOR - SOLO POSTMAN (ELIMINAR DESPUÉS DE USAR)
-// IMPORTANTE: Esta ruta debe ir ANTES de las rutas generales para evitar conflictos
-const User = require('./models/User');
-app.post('/api/admin/create-super-admin', async (req, res) => {
-  try {
-    console.log('🚀 Intentando crear/actualizar administrador via POST...');
-    
-    // Validar que el request tenga la clave secreta
-    const { secretKey, adminData } = req.body;
-    
-    if (secretKey !== 'CREATE_ADMIN_SECRET_2025') {
-      return res.status(401).json({
-        success: false,
-        message: '❌ Clave secreta incorrecta'
-      });
-    }
-    
-    // Usar datos del request o datos por defecto
-    const email = adminData?.email || 'chris@chrisadmin.com';
-    const password = adminData?.password || 'Pipeman06';
-    const nombre = adminData?.nombre || 'Chris Admin';
-    
-    console.log(`📧 Creando admin con email: ${email}`);
-    
-    // Verificar si ya existe
-    const existingAdmin = await User.findOne({ email: email });
-    
-    if (existingAdmin) {
-      console.log('👤 Usuario existente encontrado, actualizando...');
-      // Actualizar contraseña y rol
-      existingAdmin.password = password;
-      existingAdmin.rol = 'administrador';
-      existingAdmin.estado = 'activo';
-      existingAdmin.nombre = nombre;
-      await existingAdmin.save();
-      
-      console.log('✅ Administrador actualizado');
-      return res.json({
-        success: true,
-        message: '✅ Administrador actualizado exitosamente',
-        admin: {
-          id: existingAdmin._id,
-          email: existingAdmin.email,
-          nombre: existingAdmin.nombre,
-          rol: existingAdmin.rol,
-          estado: existingAdmin.estado
-        },
-        loginInfo: {
-          email: email,
-          password: password,
-          loginUrl: 'http://localhost:3000/login',
-          adminPanel: 'http://localhost:3000/admin'
-        }
-      });
-    }
-
-    console.log('👤 Creando nuevo administrador...');
-    // Crear nuevo administrador
-    const newAdminData = {
-      nombre: nombre,
-      email: email,
-      password: password,
-      telefono: '+57 300 123 4567',
-      rol: 'administrador',
-      estado: 'activo',
-      configuracion: {
-        pais: 'Colombia',
-        region: 'Bogotá',
-        idioma: 'es',
-        moneda: 'COP'
-      },
-      direccion: {
-        calle: 'Calle Principal 123',
-        ciudad: 'Bogotá',
-        departamento: 'Cundinamarca',
-        codigoPostal: '110111',
-        pais: 'Colombia'
-      }
-    };
-
-    const admin = new User(newAdminData);
-    await admin.save();
-    
-    console.log('✅ Administrador creado exitosamente');
-    res.status(201).json({
-      success: true,
-      message: '✅ ¡Administrador creado exitosamente!',
-      admin: {
-        id: admin._id,
-        email: admin.email,
-        nombre: admin.nombre,
-        rol: admin.rol,
-        estado: admin.estado,
-        fechaCreacion: admin.fechaCreacion
-      },
-      loginInfo: {
-        email: email,
-        password: password,
-        loginUrl: 'http://localhost:3000/login',
-        adminPanel: 'http://localhost:3000/admin'
-      }
-    });
-
-  } catch (error) {
-    console.error('❌ Error creando admin:', error);
-    res.status(500).json({
-      success: false,
-      message: '❌ Error creando administrador',
-      error: error.message,
-      details: error.name === 'ValidationError' ? error.errors : null
-    });
+/* Bootstrap admin — OFF by default in production (use ENABLE_ADMIN_BOOTSTRAP=true only for controlled ops). */
+if (!isProduction || process.env.ENABLE_ADMIN_BOOTSTRAP === 'true') {
+  if (isProduction) {
+    logger.warn('admin_bootstrap_route_enabled', { msg: 'ENABLE_ADMIN_BOOTSTRAP is true' });
   }
-});
+  const User = require('./models/User');
+  app.post('/api/admin/create-super-admin', async (req, res) => {
+    try {
+      const { secretKey, adminData } = req.body;
+
+      const bootstrapSecret =
+        process.env.ADMIN_BOOTSTRAP_SECRET ||
+        (!isProduction ? 'CREATE_ADMIN_SECRET_2025' : null);
+      if (!bootstrapSecret || secretKey !== bootstrapSecret) {
+        return res.status(401).json({
+          success: false,
+          message: 'Clave incorrecta',
+          requestId: req.requestId,
+        });
+      }
+
+      const email = adminData?.email || 'chris@chrisadmin.com';
+      const password = adminData?.password || 'Pipeman06';
+      const nombre = adminData?.nombre || 'Chris Admin';
+
+      const existingAdmin = await User.findOne({ email });
+
+      if (existingAdmin) {
+        existingAdmin.password = password;
+        existingAdmin.rol = 'administrador';
+        existingAdmin.estado = 'activo';
+        existingAdmin.nombre = nombre;
+        await existingAdmin.save();
+
+        return res.json({
+          success: true,
+          message: 'Administrador actualizado',
+          admin: {
+            id: existingAdmin._id,
+            email: existingAdmin.email,
+            nombre: existingAdmin.nombre,
+            rol: existingAdmin.rol,
+          },
+          ...(isProduction
+            ? {}
+            : {
+                loginInfo: {
+                  email,
+                  password,
+                  loginUrl: 'http://localhost:3000/login',
+                },
+              }),
+          requestId: req.requestId,
+        });
+      }
+
+      const newAdminData = {
+        nombre,
+        email,
+        password,
+        telefono: '+57 300 123 4567',
+        rol: 'administrador',
+        estado: 'activo',
+        configuracion: {
+          pais: 'Colombia',
+          region: 'Bogotá',
+          idioma: 'es',
+          moneda: 'COP',
+        },
+        direccion: {
+          calle: 'Calle Principal 123',
+          ciudad: 'Bogotá',
+          departamento: 'Cundinamarca',
+          codigoPostal: '110111',
+          pais: 'Colombia',
+        },
+      };
+
+      const admin = new User(newAdminData);
+      await admin.save();
+
+      res.status(201).json({
+        success: true,
+        message: 'Administrador creado',
+        admin: {
+          id: admin._id,
+          email: admin.email,
+          nombre: admin.nombre,
+          rol: admin.rol,
+        },
+        ...(isProduction
+          ? {}
+          : {
+              loginInfo: {
+                email,
+                password,
+                loginUrl: 'http://localhost:3000/login',
+              },
+            }),
+        requestId: req.requestId,
+      });
+    } catch (error) {
+      logger.error('admin_bootstrap_failed', {
+        requestId: req.requestId,
+        message: error.message,
+      });
+      res.status(500).json({
+        success: false,
+        message: 'Error creando administrador',
+        requestId: req.requestId,
+        ...(process.env.NODE_ENV === 'development' && { details: error.message }),
+      });
+    }
+  });
+}
 
 // API Routes (después de la ruta temporal)
 app.use('/api/auth', authRoutes);
@@ -372,17 +460,14 @@ app.use(notFound);
 app.use(errorHandler);
 
 // Iniciar servidor
-app.listen(PORT, () => {
-  console.log(`🌟 Servidor de Comercializadora SPG ejecutándose en puerto ${PORT}`);
-  console.log(`🔗 URL: http://localhost:${PORT}`);
-  console.log(`📱 Entorno: ${process.env.NODE_ENV || 'development'}`);
+const server = app.listen(PORT, () => {
+  logger.info('server_listen', { port: PORT, env: process.env.NODE_ENV || 'development' });
 });
 
 // Manejo de errores no capturados
-process.on('unhandledRejection', (err, promise) => {
-  console.error('❌ Error no manejado:', err.message);
-  server.close(() => {
-    process.exit(1);
+process.on('unhandledRejection', (err) => {
+  logger.error('unhandled_rejection', {
+    message: err && err.message ? err.message : String(err),
   });
 });
 

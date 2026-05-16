@@ -304,21 +304,9 @@ productSchema.methods.reducirStock = function(cantidad) {
   throw new Error('Stock insuficiente');
 };
 
-// Helper para convertir URLs locales a placeholder
+// Normalizar URL guardada en BD: rutas relativas /uploads/ se sirven desde la API; el front antecede REACT_APP_API_URL.
 const getImageUrl = (url) => {
   if (!url) return null;
-  
-  // Si ya es una URL completa de Cloudinary, devolverla tal cual
-  if (url.startsWith('http://') || url.startsWith('https://')) {
-    return url;
-  }
-  
-  // Si es una ruta local que empieza con /uploads/, usar placeholder
-  if (url.startsWith('/uploads/')) {
-    // Imagen placeholder genérica
-    return 'https://via.placeholder.com/400x400/e5e7eb/6b7280?text=Imagen+No+Disponible';
-  }
-  
   return url;
 };
 

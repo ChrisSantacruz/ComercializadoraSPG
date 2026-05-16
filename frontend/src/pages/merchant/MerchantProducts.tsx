@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Product, Category } from '../../types';
 import merchantService from '../../services/merchantService';
-import categoryService from '../../services/categoryService';
+import { loadActiveCategories } from '../../lib/data/activeCategoriesResource';
 import ProductForm from '../../components/forms/ProductForm';
 import LoadingSpinner from '../../components/ui/LoadingSpinner';
 import { getFirstImageUrl, handleImageError } from '../../utils/imageUtils';
@@ -29,7 +29,7 @@ const MerchantProducts: React.FC = () => {
       setLoading(true);
       const [productsResponse, categoriesResponse] = await Promise.all([
         merchantService.getProducts(filters),
-        categoryService.getActiveCategories()
+        loadActiveCategories()
       ]);
       
       setProducts(productsResponse?.datos || []);

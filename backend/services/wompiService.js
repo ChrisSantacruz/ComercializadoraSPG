@@ -33,7 +33,7 @@ class WompiService {
             const payload = {
                 name: `Pedido #${reference}`,
                 description: `Pago del pedido ${reference} - Comercializadora SPG`,
-                single_use: false, // Cambiar a false para evitar problemas en pruebas
+                single_use: paymentData.singleUse !== false,
                 collect_shipping: false,
                 currency: currency || 'COP',
                 amount_in_cents: Math.round(amount * 100), // Convertir a centavos
@@ -228,74 +228,6 @@ class WompiService {
     }
 
     /**
-     * Validar integridad de evento webhook
-     */
-    validateEventIntegrity(signature, timestamp, requestBody) {
-        try {
-            const concatenatedString = `${timestamp}.${JSON.stringify(requestBody)}`;
-            const computedSignature = crypto.HmacSHA256(concatenatedString, this.integritySecret).toString();
-            
-            // Wompi envía la firma como: "t=timestamp,v1=signature"
-            const signatures = signature.split(',');
-            const timestampFromHeader = signatures.find(s => s.startsWith('t=')).split('=')[1];
-            const signatureFromHeader = signatures.find(s => s.startsWith('v1=')).split('=')[1];
-
-            // Validar timestamp (no más de 5 minutos de diferencia)
-            const now = Math.floor(Date.now() / 1000);
-            const eventTime = parseInt(timestampFromHeader);
-            if (Math.abs(now - eventTime) > 300) {
-                return false;
-            }
-
-            return signatureFromHeader === computedSignature;
-        } catch (error) {
-            console.error('Error validating event integrity:', error);
-            return false;
-        }
-    }
-
-    /**
-     * Procesar evento de webhook
-     */
-    processWebhookEvent(eventData) {
-        const { event, data } = eventData;
-        
-        switch (event) {
-            case 'transaction.updated':
-                return this.handleTransactionUpdated(data);
-            case 'payment_link.transaction':
-                return this.handlePaymentLinkTransaction(data);
-            default:
-                console.log(`Unhandled event type: ${event}`);
-                return { processed: false };
-        }
-    }
-
-    /**
-     * Manejar actualización de transacción
-     */
-    handleTransactionUpdated(transactionData) {
-        console.log('Transaction updated:', transactionData);
-        return {
-            processed: true,
-            type: 'transaction_updated',
-            data: transactionData
-        };
-    }
-
-    /**
-     * Manejar transacción de enlace de pago
-     */
-    handlePaymentLinkTransaction(transactionData) {
-        console.log('Payment link transaction:', transactionData);
-        return {
-            processed: true,
-            type: 'payment_link_transaction',
-            data: transactionData
-        };
-    }
-
-    /**
      * Crear token de aceptación para términos y condiciones
      */
     async createAcceptanceToken() {
@@ -391,7 +323,13 @@ class WompiService {
             const response = await axios.post(
                 `${this.apiUrl}/transactions`,
                 payload,
-                { headers: this.headers }
+                {
+                    headers: {
+                        'Authorization': `Bearer ${this.privateKey}`,
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    }
+                }
             );
 
             return {

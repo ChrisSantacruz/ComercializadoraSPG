@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { getImageUrl, handleImageError } from '../../utils/imageUtils';
+import { PhotoIcon } from '@heroicons/react/24/outline';
+import { getImageUrl } from '../../utils/imageUtils';
+import { Skeleton } from './Skeleton';
+import { cn } from '../../lib/cn';
 
 interface ProductImageProps {
   src: string | null | undefined;
@@ -11,6 +14,11 @@ interface ProductImageProps {
   onError?: () => void;
 }
 
+function resolvedUrl(input: string | null | undefined, fallback: string): string {
+  if (input == null || String(input).trim() === '') return fallback;
+  return getImageUrl(input);
+}
+
 const ProductImage: React.FC<ProductImageProps> = ({
   src,
   alt,
@@ -18,23 +26,17 @@ const ProductImage: React.FC<ProductImageProps> = ({
   fallbackSrc = '/images/default-product.svg',
   loading = 'lazy',
   onLoad,
-  onError
+  onError,
 }) => {
-  const [imageSrc, setImageSrc] = useState<string>('');
+  const [imageSrc, setImageSrc] = useState(() => resolvedUrl(src, fallbackSrc));
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
 
   useEffect(() => {
-    if (src) {
-      const processedSrc = getImageUrl(src);
-      setImageSrc(processedSrc);
-      setIsLoading(true);
-      setHasError(false);
-    } else {
-      setImageSrc(fallbackSrc);
-      setIsLoading(false);
-      setHasError(false);
-    }
+    const next = resolvedUrl(src, fallbackSrc);
+    setImageSrc(next);
+    setIsLoading(true);
+    setHasError(false);
   }, [src, fallbackSrc]);
 
   const handleImageLoad = () => {
@@ -43,46 +45,49 @@ const ProductImage: React.FC<ProductImageProps> = ({
     onLoad?.();
   };
 
-  const handleImageError = (event: React.SyntheticEvent<HTMLImageElement>) => {
+  const handleImageError = () => {
     setIsLoading(false);
     setHasError(true);
-    
-    // Si no es la imagen por defecto, intentar cargar la imagen por defecto
+
     if (imageSrc !== fallbackSrc) {
       setImageSrc(fallbackSrc);
       setIsLoading(true);
     }
-    
+
     onError?.();
   };
 
+  const safeSrc = imageSrc && String(imageSrc).trim() !== '' ? imageSrc : fallbackSrc;
+
   return (
-    <div className="relative">
-      {isLoading && (
-        <div className="absolute inset-0 bg-gray-200 animate-pulse flex items-center justify-center">
-          <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-        </div>
-      )}
-      
+    <div className="relative h-full w-full min-h-0">
+      {isLoading ? <Skeleton className="absolute inset-0 rounded-none" aria-hidden /> : null}
+
       <img
-        src={imageSrc}
+        src={safeSrc}
         alt={alt}
-        className={`${className} ${isLoading ? 'opacity-0' : 'opacity-100'} transition-opacity duration-300`}
+        className={cn(
+          className,
+          'transition-opacity duration-200',
+          isLoading ? 'opacity-0' : 'opacity-100',
+        )}
         loading={loading}
+        decoding="async"
         onLoad={handleImageLoad}
         onError={handleImageError}
       />
-      
-      {hasError && imageSrc === fallbackSrc && (
-        <div className="absolute inset-0 bg-gray-100 flex items-center justify-center">
-          <div className="text-center text-gray-500">
-            <div className="text-4xl mb-2">📦</div>
-            <div className="text-sm">Sin imagen</div>
-          </div>
+
+      {hasError && safeSrc === fallbackSrc ? (
+        <div
+          className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-1 bg-gray-100 text-gray-500"
+          aria-hidden
+        >
+          <PhotoIcon className="h-8 w-8 text-gray-400" />
+          <span className="text-xs font-medium">Sin imagen</span>
         </div>
-      )}
+      ) : null}
     </div>
   );
 };
 
-export default ProductImage; 
+export default ProductImage;

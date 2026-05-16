@@ -3,6 +3,7 @@ const cloudinary = require('cloudinary');
 const multerStorageCloudinary = require('multer-storage-cloudinary');
 const CloudinaryStorage = multerStorageCloudinary.CloudinaryStorage || multerStorageCloudinary;
 const path = require('path');
+const logger = require('../utils/logger');
 
 // Configurar Cloudinary solo si las credenciales están disponibles
 const useCloudinary = process.env.CLOUDINARY_CLOUD_NAME && 
@@ -22,9 +23,9 @@ if (useCloudinary) {
     cloudinary.v2 = cloudinary;
   }
   
-  console.log('✅ Cloudinary configurado:', process.env.CLOUDINARY_CLOUD_NAME);
+  logger.info('upload_cloudinary_ready', { cloud: process.env.CLOUDINARY_CLOUD_NAME });
 } else {
-  console.log('⚠️  Cloudinary no configurado - usando almacenamiento local');
+  logger.warn('upload_local_storage', { msg: 'Cloudinary no configurado — usando almacenamiento local' });
 }
 
 // Filtro para validar tipos de archivo

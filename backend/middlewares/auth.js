@@ -1,69 +1,65 @@
-const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const { verificarToken } = require('../utils/jwt');
 
 // Middleware para verificar token JWT
-const verificarToken = async (req, res, next) => {
+const verificarTokenMiddleware = async (req, res, next) => {
   try {
     let token;
-    
-    // Verificar si el token está en el header Authorization
+
     if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
       token = req.headers.authorization.split(' ')[1];
-    }
-    // También verificar en cookies
-    else if (req.cookies.token) {
+    } else if (req.cookies.token) {
       token = req.cookies.token;
     }
-    
+
     if (!token) {
       return res.status(401).json({
         exito: false,
-        mensaje: 'Acceso denegado. Token no proporcionado.'
+        mensaje: 'Acceso denegado. Token no proporcionado.',
+        codigo: 'TOKEN_MISSING'
       });
     }
-    
-    // Verificar el token
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    
-    // Buscar el usuario
+
+    const decoded = verificarToken(token);
+
     const usuario = await User.findById(decoded.id).select('-password');
-    
+
     if (!usuario) {
       return res.status(401).json({
         exito: false,
-        mensaje: 'Token inválido. Usuario no encontrado.'
+        mensaje: 'Token inválido. Usuario no encontrado.',
+        codigo: 'TOKEN_INVALID'
       });
     }
-    
-    // Verificar si el usuario está activo
+
     if (usuario.estado !== 'activo') {
       return res.status(401).json({
         exito: false,
-        mensaje: 'Cuenta inactiva o bloqueada.'
+        mensaje: 'Cuenta inactiva o bloqueada.',
+        codigo: 'ACCOUNT_INACTIVE'
       });
     }
-    
-    // Agregar usuario a la request
+
     req.usuario = usuario;
     next();
-    
   } catch (error) {
-    console.error('Error en verificación de token:', error);
-    
     if (error.name === 'JsonWebTokenError') {
       return res.status(401).json({
         exito: false,
-        mensaje: 'Token inválido.'
+        mensaje: 'Token inválido.',
+        codigo: 'TOKEN_INVALID'
       });
     }
-    
+
     if (error.name === 'TokenExpiredError') {
       return res.status(401).json({
         exito: false,
-        mensaje: 'Token expirado.'
+        mensaje: 'Token expirado.',
+        codigo: 'TOKEN_EXPIRED'
       });
     }
-    
+
+    console.error('Error en verificación de token:', error);
     return res.status(500).json({
       exito: false,
       mensaje: 'Error interno del servidor.'
@@ -209,15 +205,14 @@ const autenticacionOpcional = async (req, res, next) => {
     
     if (token) {
       try {
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        const decoded = verificarToken(token);
         const usuario = await User.findById(decoded.id).select('-password');
-        
+
         if (usuario && usuario.estado === 'activo') {
           req.usuario = usuario;
         }
       } catch (error) {
         // Token inválido o expirado, pero continuamos sin usuario
-        console.log('Token opcional inválido:', error.message);
       }
     }
     
@@ -230,8 +225,8 @@ const autenticacionOpcional = async (req, res, next) => {
 };
 
 module.exports = {
-  verificarToken,
-  protect: verificarToken,
+  verificarToken: verificarTokenMiddleware,
+  protect: verificarTokenMiddleware,
   verificarRol,
   authorize: verificarRol,
   soloComerciante,

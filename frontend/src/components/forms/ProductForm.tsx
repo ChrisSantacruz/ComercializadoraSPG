@@ -47,19 +47,14 @@ const ProductForm: React.FC<ProductFormProps> = ({
 
   const loadCategories = async () => {
     try {
-      console.log('🔍 Cargando categorías desde API...');
       const categorias = await categoryService.getCategories();
-      console.log('✅ Categorías recibidas:', categorias);
-      
+
       if (categorias && Array.isArray(categorias) && categorias.length > 0) {
         setCategories(categorias);
-        console.log('✅ Categorías cargadas exitosamente:', categorias.length);
       } else {
-        console.log('⚠️  Sin categorías de la API, usando por defecto');
         throw new Error('No hay categorías disponibles');
       }
-    } catch (error) {
-      console.error('❌ Error cargando categorías:', error);
+    } catch {
       // Usar categorías por defecto si no se pueden cargar desde la API
       // ObjectIds de ejemplo (24 caracteres hex)
       const categoriasDefault: Category[] = [
@@ -80,7 +75,6 @@ const ProductForm: React.FC<ProductFormProps> = ({
         { _id: '64f8c2e2a1b2c3d4e5f6a715', nombre: 'Salud y Bienestar', slug: 'salud-bienestar', estado: 'activa' as const, orden: 15, fechaCreacion: '', contadorProductos: 0 }
       ];
       setCategories(categoriasDefault);
-      console.log('✅ Usando categorías por defecto:', categoriasDefault.length);
     }
   };
 

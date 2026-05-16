@@ -2,7 +2,7 @@
  * Utilities para manejar imágenes en la aplicación
  */
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5001';
 
 /**
  * Construye la URL completa para una imagen
@@ -22,8 +22,6 @@ export const getImageUrl = (imageUrl: string | null | undefined | any): string =
     if (url && typeof url === 'string') {
       return getImageUrl(url); // Llamada recursiva con la URL extraída
     }
-    // Si no encontramos URL válida en el objeto, usar imagen por defecto
-    console.warn('⚠️ Objeto de imagen no contiene URL válida:', imageUrl);
     return '/images/default-product.svg';
   }
 
@@ -42,28 +40,15 @@ export const getImageUrl = (imageUrl: string | null | undefined | any): string =
 
   // Si es una URL relativa que empieza con /uploads/, construir la URL completa
   if (urlString.startsWith('/uploads/')) {
-    const fullUrl = `${API_BASE_URL}${urlString}`;
-    if (process.env.NODE_ENV === 'development') {
-      console.log('🖼️ Construyendo URL de imagen:', { original: urlString, final: fullUrl });
-    }
-    return fullUrl;
+    return `${API_BASE_URL}${urlString}`;
   }
 
   // Si es solo el nombre del archivo, agregar la ruta completa
   if (!urlString.startsWith('/') && !urlString.includes('/')) {
-    const fullUrl = `${API_BASE_URL}/uploads/productos/${urlString}`;
-    if (process.env.NODE_ENV === 'development') {
-      console.log('🖼️ Construyendo URL de imagen desde nombre:', { original: urlString, final: fullUrl });
-    }
-    return fullUrl;
+    return `${API_BASE_URL}/uploads/productos/${urlString}`;
   }
 
-  // Fallback: agregar base URL
-  const fullUrl = `${API_BASE_URL}${urlString}`;
-  if (process.env.NODE_ENV === 'development') {
-    console.log('🖼️ Fallback URL de imagen:', { original: urlString, final: fullUrl });
-  }
-  return fullUrl;
+  return `${API_BASE_URL}${urlString}`;
 };
 
 /**
@@ -140,13 +125,6 @@ export const handleImageError = (
   fallbackUrl: string = '/images/default-product.svg'
 ) => {
   const img = event.currentTarget;
-  
-  // Solo mostrar error si no es la imagen por defecto
-  if (process.env.NODE_ENV === 'development' && !img.src.includes('default-product')) {
-    console.warn('⚠️ Image failed to load:', img.src);
-    console.warn('🔄 Intentando cargar imagen por defecto:', fallbackUrl);
-  }
-  
   if (img.src !== fallbackUrl) {
     img.src = fallbackUrl;
   }
@@ -183,10 +161,7 @@ export const checkImageExists = async (imageUrl: string): Promise<boolean> => {
   try {
     const response = await fetch(imageUrl, { method: 'HEAD' });
     return response.ok;
-  } catch (error) {
-    if (process.env.NODE_ENV === 'development') {
-      console.warn('❌ Error verificando imagen:', imageUrl, error);
-    }
+  } catch {
     return false;
   }
 };

@@ -1,5 +1,5 @@
 import api, { handleApiResponse } from './api';
-import { ApiResponse, Product, Order, PaginatedResponse, ProductForm, DashboardStats, AnalyticsData, ProductFilters, OrderFilters } from '../types';
+import { ApiResponse, Product, Order, PaginatedResponse, DashboardStats, AnalyticsData, ProductFilters, OrderFilters } from '../types';
 
 export const merchantService = {
   // Dashboard y estadísticas

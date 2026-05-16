@@ -1,10 +1,19 @@
+const logger = require('../utils/logger');
+
 // Middleware para manejo global de errores
 const errorHandler = (err, req, res, next) => {
   let error = { ...err };
   error.message = err.message;
+  const requestId = req.requestId;
 
-  // Log del error
-  console.error('Error capturado:', err);
+  if (err.message && String(err.message).toLowerCase().includes('cors')) {
+    logger.warn('cors_denied', { requestId, path: req.path, origin: req.get('Origin') });
+    return res.status(403).json({
+      exito: false,
+      mensaje: 'Origen no permitido por política CORS',
+      requestId,
+    });
+  }
 
   // Error de validación de Mongoose
   if (err.name === 'ValidationError') {
@@ -96,9 +105,11 @@ const errorHandler = (err, req, res, next) => {
 
   // Error de conexión de base de datos
   if (err.name === 'MongoError' || err.name === 'MongooseError') {
+    logger.error('database_error', { requestId, message: err.message, name: err.name });
     return res.status(500).json({
       exito: false,
-      mensaje: 'Error de base de datos'
+      mensaje: 'Error de base de datos',
+      requestId,
     });
   }
 
@@ -119,9 +130,18 @@ const errorHandler = (err, req, res, next) => {
   }
 
   // Error interno del servidor por defecto
+  logger.error('unhandled_route_error', {
+    requestId,
+    message: err.message,
+    name: err.name,
+    code: err.code,
+    statusCode: err.statusCode,
+    stack: process.env.NODE_ENV === 'development' ? err.stack : undefined,
+  });
   res.status(500).json({
     exito: false,
     mensaje: 'Error interno del servidor',
+    requestId,
     ...(process.env.NODE_ENV === 'development' && { 
       stack: err.stack,
       error: err 

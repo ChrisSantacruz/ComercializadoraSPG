@@ -69,8 +69,7 @@ const DeliveryConfirmationForm: React.FC<DeliveryConfirmationFormProps> = ({
       
       onConfirmed(confirmed);
       onClose();
-    } catch (error) {
-      console.error('Error confirmando entrega:', error);
+    } catch {
       showError('Error', 'Error al confirmar la entrega');
     } finally {
       setLoading(false);

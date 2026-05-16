@@ -1,11 +1,28 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../../stores/authStore';
 import { authService } from '../../services/authService';
 import LoadingSpinner from '../../components/ui/LoadingSpinner';
 import NotificationCenter from '../../components/profile/NotificationCenter';
+import { queryKeys } from '../../lib/query/queryKeys';
+import {
+  ArrowPathIcon,
+  BuildingOffice2Icon,
+  CameraIcon,
+  ChartBarIcon,
+  CheckCircleIcon,
+  ClipboardDocumentListIcon,
+  EnvelopeIcon,
+  ExclamationTriangleIcon,
+  LockClosedIcon,
+  PencilSquareIcon,
+  ShoppingBagIcon,
+  ShoppingCartIcon,
+} from '@heroicons/react/24/outline';
 
 const ProfilePage: React.FC = () => {
+  const queryClient = useQueryClient();
   const { user, updateUser, checkAuth } = useAuthStore();
   const [isEditing, setIsEditing] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -106,9 +123,9 @@ const ProfilePage: React.FC = () => {
     setSuccess(null);
 
     try {
-      console.log('📝 Enviando datos de actualización:', formData);
       const updatedUser = await authService.updateProfile(formData);
       updateUser(updatedUser);
+      void queryClient.invalidateQueries({ queryKey: queryKeys.profile.all });
       setSuccess('Perfil actualizado correctamente');
       setIsEditing(false);
     } catch (err) {
@@ -195,6 +212,7 @@ const ProfilePage: React.FC = () => {
     try {
       const updatedUser = await authService.uploadAvatar(file);
       updateUser(updatedUser);
+      void queryClient.invalidateQueries({ queryKey: queryKeys.profile.all });
       setSuccess('Foto de perfil actualizada correctamente');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al subir la foto de perfil');
@@ -226,6 +244,7 @@ const ProfilePage: React.FC = () => {
     try {
       const updatedUser = await authService.uploadBanner(file);
       updateUser(updatedUser);
+      void queryClient.invalidateQueries({ queryKey: queryKeys.profile.all });
       setSuccess('Banner actualizado correctamente');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al subir el banner');
@@ -241,6 +260,7 @@ const ProfilePage: React.FC = () => {
     
     try {
       await checkAuth();
+      void queryClient.invalidateQueries({ queryKey: queryKeys.profile.all });
       setSuccess('Perfil actualizado correctamente');
     } catch (err) {
       setError('Error al actualizar el perfil');
@@ -261,7 +281,7 @@ const ProfilePage: React.FC = () => {
             >
               <div className="flex items-center space-x-3">
                 <div className="bg-[#0d8e76] p-2 rounded-lg">
-                  <span className="text-white text-xl">🛍️</span>
+                  <ShoppingBagIcon className="h-6 w-6 text-white" aria-hidden />
                 </div>
                 <div>
                   <h4 className="font-medium text-gray-900 group-hover:text-[#f2902f]">Gestionar Productos</h4>
@@ -276,7 +296,7 @@ const ProfilePage: React.FC = () => {
             >
               <div className="flex items-center space-x-3">
                 <div className="bg-green-600 p-2 rounded-lg">
-                  <span className="text-white text-xl">📦</span>
+                  <ClipboardDocumentListIcon className="h-6 w-6 text-white" aria-hidden />
                 </div>
                 <div>
                   <h4 className="font-medium text-gray-900 group-hover:text-green-600">Ver Pedidos</h4>
@@ -291,7 +311,7 @@ const ProfilePage: React.FC = () => {
             >
               <div className="flex items-center space-x-3">
                 <div className="bg-[#f2902f] p-2 rounded-lg">
-                  <span className="text-white text-xl">📈</span>
+                  <ChartBarIcon className="h-6 w-6 text-white" aria-hidden />
                 </div>
                 <div>
                   <h4 className="font-medium text-gray-900 group-hover:text-purple-600">Análisis</h4>
@@ -315,7 +335,7 @@ const ProfilePage: React.FC = () => {
             >
               <div className="flex items-center space-x-3">
                 <div className="bg-[#0d8e76] p-2 rounded-lg">
-                  <span className="text-white text-xl">📦</span>
+                  <ShoppingBagIcon className="h-6 w-6 text-white" aria-hidden />
                 </div>
                 <div>
                   <h4 className="font-medium text-gray-900 group-hover:text-[#f2902f]">Mis Pedidos</h4>
@@ -330,7 +350,7 @@ const ProfilePage: React.FC = () => {
             >
               <div className="flex items-center space-x-3">
                 <div className="bg-green-600 p-2 rounded-lg">
-                  <span className="text-white text-xl">🛒</span>
+                  <ShoppingCartIcon className="h-6 w-6 text-white" aria-hidden />
                 </div>
                 <div>
                   <h4 className="font-medium text-gray-900 group-hover:text-green-600">Seguir Comprando</h4>
@@ -354,7 +374,7 @@ const ProfilePage: React.FC = () => {
           {/* Banner para comerciantes */}
           {user.rol === 'comerciante' && (
             <div className="relative h-40 sm:h-52 md:h-56 lg:h-64 bg-gradient-to-r from-[#0d8e76] to-[#1c3a35] overflow-hidden">
-              {user.banner ? (
+              {user.banner?.trim() ? (
                 <img 
                   src={user.banner} 
                   alt="Banner"
@@ -367,7 +387,17 @@ const ProfilePage: React.FC = () => {
               )}
               <div className="absolute bottom-3 sm:bottom-4 md:bottom-5 right-3 sm:right-4 md:right-5">
                 <label className="bg-white/90 hover:bg-white text-[#f2902f] px-2.5 py-1.5 sm:px-3 sm:py-2 md:px-4 md:py-2.5 rounded-lg cursor-pointer transition-all duration-200 shadow-lg hover:shadow-xl inline-flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm md:text-base font-medium">
-                  {uploadingBanner ? '⏳ Subiendo...' : '📸 Cambiar Banner'}
+                  {uploadingBanner ? (
+                    <>
+                      <ArrowPathIcon className="h-4 w-4 animate-spin shrink-0" aria-hidden />
+                      <span>Subiendo...</span>
+                    </>
+                  ) : (
+                    <>
+                      <CameraIcon className="h-4 w-4 shrink-0" aria-hidden />
+                      <span>Cambiar banner</span>
+                    </>
+                  )}
                   <input
                     type="file"
                     accept="image/*"
@@ -385,7 +415,7 @@ const ProfilePage: React.FC = () => {
             <div className="flex flex-col sm:flex-row items-center sm:items-start sm:space-x-4 md:space-x-6 lg:space-x-8 space-y-4 sm:space-y-0">
               <div className="relative flex-shrink-0">
                 <div className="w-24 h-24 sm:w-28 sm:h-28 md:w-32 md:h-32 rounded-full bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center overflow-hidden border-4 border-white shadow-xl">
-                  {user.avatar ? (
+                  {user.avatar?.trim() ? (
                     <img 
                       src={user.avatar} 
                       alt={user.nombre}
@@ -395,8 +425,12 @@ const ProfilePage: React.FC = () => {
                     <div className="w-full h-full bg-gradient-to-br from-[#0d8e76]/20 to-[#1c3a35]/10"></div>
                   )}
                 </div>
-                <label className="absolute bottom-0 right-0 bg-[#f2902f] text-white p-2 sm:p-2.5 md:p-3 rounded-full cursor-pointer hover:bg-[#e07d1f] hover:scale-110 transition-all duration-200 shadow-lg hover:shadow-xl">
-                  {uploadingAvatar ? '⏳' : '📷'}
+                <label className="absolute bottom-0 right-0 bg-[#f2902f] text-white p-2 sm:p-2.5 md:p-3 rounded-full cursor-pointer hover:bg-[#e07d1f] hover:scale-110 transition-all duration-200 shadow-lg hover:shadow-xl inline-flex items-center justify-center">
+                  {uploadingAvatar ? (
+                    <ArrowPathIcon className="h-5 w-5 animate-spin" aria-hidden />
+                  ) : (
+                    <CameraIcon className="h-5 w-5" aria-hidden />
+                  )}
                   <input
                     type="file"
                     accept="image/*"
@@ -435,25 +469,31 @@ const ProfilePage: React.FC = () => {
                           Mi Perfil
                         </h1>
                         <p className="text-green-100 text-xs sm:text-sm md:text-base font-medium">
-                          {user.nombre || 'Usuario'} • {user.rol?.charAt(0).toUpperCase() + user.rol?.slice(1) || 'Cliente'}
+                          {user.nombre || 'Usuario'} •{' '}
+                          {user.rol
+                            ? `${user.rol.charAt(0).toUpperCase()}${user.rol.slice(1)}`
+                            : 'Sin rol'}
                         </p>
                       </>
                     )}
                     {user.verificado ? (
-                      <span className="inline-flex items-center px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-full text-xs sm:text-sm font-medium bg-green-100 text-green-800 mt-2 sm:mt-3">
-                        ✓ Email verificado
+                      <span className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-full text-xs sm:text-sm font-medium bg-green-100 text-green-800 mt-2 sm:mt-3">
+                        <CheckCircleIcon className="h-4 w-4 shrink-0" aria-hidden />
+                        Email verificado
                       </span>
                     ) : (
                       <div className="mt-2 sm:mt-3 space-y-2">
-                        <span className="inline-flex items-center px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-full text-xs sm:text-sm font-medium bg-yellow-100 text-yellow-800">
-                          ⚠ Email pendiente de verificar
+                        <span className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-full text-xs sm:text-sm font-medium bg-yellow-100 text-yellow-800">
+                          <ExclamationTriangleIcon className="h-4 w-4 shrink-0" aria-hidden />
+                          Email pendiente de verificar
                         </span>
                         <br />
                         <Link
                           to={`/verify-email?email=${user.email}`}
-                          className="inline-flex items-center px-3 sm:px-4 py-1.5 sm:py-2 bg-green-600 text-white text-xs sm:text-sm font-medium rounded-lg hover:bg-green-700 transition-colors"
+                          className="inline-flex items-center gap-2 px-3 sm:px-4 py-1.5 sm:py-2 bg-green-600 text-white text-xs sm:text-sm font-medium rounded-lg hover:bg-green-700 transition-colors"
                         >
-                          📧 Verificar Email
+                          <EnvelopeIcon className="h-4 w-4 shrink-0" aria-hidden />
+                          Verificar email
                         </Link>
                       </div>
                     )}
@@ -468,20 +508,12 @@ const ProfilePage: React.FC = () => {
                         : 'bg-[#0d8e76] hover:bg-[#0b7a64] text-white'
                     } ${refreshing ? 'opacity-50 cursor-not-allowed' : 'hover:scale-105'}`}
                     title="Actualizar perfil"
+                    type="button"
                   >
-                    <svg 
-                      className={`w-5 h-5 sm:w-6 sm:h-6 ${refreshing ? 'animate-spin' : ''}`} 
-                      fill="none" 
-                      stroke="currentColor" 
-                      viewBox="0 0 24 24"
-                    >
-                      <path 
-                        strokeLinecap="round" 
-                        strokeLinejoin="round" 
-                        strokeWidth={2} 
-                        d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" 
-                      />
-                    </svg>
+                    <ArrowPathIcon
+                      className={`w-5 h-5 sm:w-6 sm:h-6 ${refreshing ? 'animate-spin' : ''}`}
+                      aria-hidden
+                    />
                   </button>
                 </div>
               </div>
@@ -509,17 +541,21 @@ const ProfilePage: React.FC = () => {
             <div className="flex flex-wrap gap-2 sm:gap-3">
               {!isEditing && (
                 <button
+                  type="button"
                   onClick={() => setIsEditing(true)}
-                  className="bg-[#0d8e76] text-white px-3 py-2 sm:px-4 sm:py-2.5 rounded-lg hover:bg-[#0b7a64] transition-all duration-200 shadow-md hover:shadow-lg text-sm sm:text-base font-medium"
+                  className="inline-flex items-center justify-center gap-2 bg-[#0d8e76] text-white px-3 py-2 sm:px-4 sm:py-2.5 rounded-lg hover:bg-[#0b7a64] transition-all duration-200 shadow-md hover:shadow-lg text-sm sm:text-base font-medium"
                 >
-                  ✏️ Editar Perfil
+                  <PencilSquareIcon className="h-5 w-5 shrink-0" aria-hidden />
+                  Editar perfil
                 </button>
               )}
               <button
+                type="button"
                 onClick={() => setShowPasswordChange(!showPasswordChange)}
-                className="bg-gray-600 text-white px-3 py-2 sm:px-4 sm:py-2.5 rounded-lg hover:bg-gray-700 transition-all duration-200 shadow-md hover:shadow-lg text-sm sm:text-base font-medium"
+                className="inline-flex items-center justify-center gap-2 bg-gray-600 text-white px-3 py-2 sm:px-4 sm:py-2.5 rounded-lg hover:bg-gray-700 transition-all duration-200 shadow-md hover:shadow-lg text-sm sm:text-base font-medium"
               >
-                🔒 Cambiar Contraseña
+                <LockClosedIcon className="h-5 w-5 shrink-0" aria-hidden />
+                Cambiar contraseña
               </button>
             </div>
           </div>
@@ -573,8 +609,9 @@ const ProfilePage: React.FC = () => {
                 {user.rol === 'comerciante' && (
                   <>
                     <div className="md:col-span-2 border-t pt-6">
-                      <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-                        🏢 Información del Negocio
+                      <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                        <BuildingOffice2Icon className="h-5 w-5 text-[#0d8e76]" aria-hidden />
+                        Información del negocio
                       </h3>
                     </div>
 
@@ -605,16 +642,16 @@ const ProfilePage: React.FC = () => {
                         required
                       >
                         <option value="">Selecciona una categoría</option>
-                        <option value="Alimentación">🍕 Alimentación</option>
-                        <option value="Tecnología">💻 Tecnología</option>
-                        <option value="Ropa">👔 Ropa y Moda</option>
-                        <option value="Hogar">🏠 Hogar y Decoración</option>
-                        <option value="Salud">💊 Salud y Bienestar</option>
-                        <option value="Servicios">🛠️ Servicios</option>
-                        <option value="Deportes">⚽ Deportes</option>
-                        <option value="Libros">📚 Libros y Educación</option>
-                        <option value="Artesanías">🎨 Artesanías</option>
-                        <option value="Otro">📦 Otro</option>
+                        <option value="Alimentación">Alimentación</option>
+                        <option value="Tecnología">Tecnología</option>
+                        <option value="Ropa">Ropa y moda</option>
+                        <option value="Hogar">Hogar y decoración</option>
+                        <option value="Salud">Salud y bienestar</option>
+                        <option value="Servicios">Servicios</option>
+                        <option value="Deportes">Deportes</option>
+                        <option value="Libros">Libros y educación</option>
+                        <option value="Artesanías">Artesanías</option>
+                        <option value="Otro">Otro</option>
                       </select>
                     </div>
 
@@ -734,8 +771,9 @@ const ProfilePage: React.FC = () => {
               {user.rol === 'comerciante' && (
                 <>
                   <div className="md:col-span-2 border-t pt-4">
-                    <h3 className="text-lg font-semibold text-gray-900 mb-3 flex items-center">
-                      🏢 Información del Negocio
+                    <h3 className="text-lg font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                      <BuildingOffice2Icon className="h-5 w-5 text-[#0d8e76]" aria-hidden />
+                      Información del negocio
                     </h3>
                   </div>
                   

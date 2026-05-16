@@ -1,18 +1,35 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import { Cart, CartItem, Product, Coupon } from '../types';
+import { Cart } from '../types';
 import { cartService } from '../services/cartService';
-import toast from 'react-hot-toast';
+import { notifyCartError, notifyCartSuccess, type NotificationAction } from '../lib/appNotifications';
+import { safeInt, safeMoney } from '../lib/safeNumeric';
+import { appQueryClient } from '../lib/query/queryClient';
+import { queryKeys } from '../lib/query/queryKeys';
+
+function syncCartQuery(cart: Cart | null) {
+  appQueryClient.setQueryData(queryKeys.cart.current(), cart);
+}
+
+export type AddToCartOptions = {
+  /** Secondary CTA on success toast (e.g. view cart). */
+  action?: NotificationAction;
+  successTitle?: string;
+  successMessage?: string;
+  /** Skip success toast (caller shows its own feedback). */
+  silent?: boolean;
+};
 
 interface CartState {
-  // Estado
   cart: Cart | null;
   isLoading: boolean;
   error: string | null;
 
-  // Acciones
+  /** Alinea Zustand + caché Query (mutaciones optimistas / bridge). */
+  syncCart: (cart: Cart | null) => void;
+
   getCart: () => Promise<void>;
-  addToCart: (productId: string, cantidad: number) => Promise<void>;
+  addToCart: (productId: string, cantidad: number, options?: AddToCartOptions) => Promise<void>;
   updateQuantity: (productId: string, cantidad: number) => Promise<void>;
   removeItem: (productId: string) => Promise<void>;
   clearCart: () => Promise<void>;
@@ -26,147 +43,162 @@ interface CartState {
 export const useCartStore = create<CartState>()(
   persist(
     (set, get) => ({
-      // Estado inicial
       cart: null,
       isLoading: false,
       error: null,
 
-      // Obtener carrito
+      syncCart: (cart: Cart | null) => {
+        syncCartQuery(cart);
+        set({ cart, error: null });
+      },
+
       getCart: async () => {
         set({ isLoading: true, error: null });
-        
         try {
           const cart = await cartService.getCart();
+          syncCartQuery(cart);
           set({ cart, isLoading: false });
-        } catch (error: any) {
+        } catch (error: unknown) {
+          const message =
+            error instanceof Error ? error.message : 'Error al obtener carrito';
           set({
-            error: error.message || 'Error al obtener carrito',
+            error: message,
             isLoading: false,
           });
+          throw new Error(message);
         }
       },
 
-      // Agregar al carrito
-      addToCart: async (productId: string, cantidad: number) => {
+      addToCart: async (productId: string, cantidad: number, options?: AddToCartOptions) => {
         set({ isLoading: true, error: null });
-        
         try {
           const cart = await cartService.addProduct(productId, cantidad);
+          syncCartQuery(cart);
           set({ cart, isLoading: false });
-          toast.success('Producto agregado al carrito');
-        } catch (error: any) {
+          if (!options?.silent) {
+            notifyCartSuccess(
+              options?.successTitle ?? 'Carrito',
+              options?.successMessage ?? 'Producto agregado al carrito',
+              options?.action,
+            );
+          }
+        } catch (error: unknown) {
+          const message =
+            error instanceof Error ? error.message : 'Error al agregar producto';
           set({
-            error: error.message || 'Error al agregar producto',
+            error: message,
             isLoading: false,
           });
-          toast.error(error.message || 'Error al agregar producto');
+          notifyCartError('Carrito', message);
           throw error;
         }
       },
 
-      // Actualizar cantidad
       updateQuantity: async (productId: string, cantidad: number) => {
         set({ isLoading: true, error: null });
-        
         try {
           const cart = await cartService.updateQuantity(productId, cantidad);
+          syncCartQuery(cart);
           set({ cart, isLoading: false });
-        } catch (error: any) {
+        } catch (error: unknown) {
+          const message =
+            error instanceof Error ? error.message : 'Error al actualizar cantidad';
           set({
-            error: error.message || 'Error al actualizar cantidad',
+            error: message,
             isLoading: false,
           });
-          toast.error(error.message || 'Error al actualizar cantidad');
+          notifyCartError('Carrito', message);
           throw error;
         }
       },
 
-      // Remover item
       removeItem: async (productId: string) => {
         set({ isLoading: true, error: null });
-        
         try {
           const cart = await cartService.removeProduct(productId);
+          syncCartQuery(cart);
           set({ cart, isLoading: false });
-          toast.success('Producto eliminado del carrito');
-        } catch (error: any) {
+          notifyCartSuccess('Carrito', 'Producto eliminado del carrito');
+        } catch (error: unknown) {
+          const message =
+            error instanceof Error ? error.message : 'Error al eliminar producto';
           set({
-            error: error.message || 'Error al eliminar producto',
+            error: message,
             isLoading: false,
           });
-          toast.error(error.message || 'Error al eliminar producto');
+          notifyCartError('Carrito', message);
           throw error;
         }
       },
 
-      // Limpiar carrito
       clearCart: async () => {
         set({ isLoading: true, error: null });
-        
         try {
           await cartService.clearCart();
+          syncCartQuery(null);
           set({ cart: null, isLoading: false });
-          toast.success('Carrito limpiado');
-        } catch (error: any) {
+          notifyCartSuccess('Carrito', 'Carrito limpiado');
+        } catch (error: unknown) {
+          const message =
+            error instanceof Error ? error.message : 'Error al limpiar carrito';
           set({
-            error: error.message || 'Error al limpiar carrito',
+            error: message,
             isLoading: false,
           });
-          toast.error(error.message || 'Error al limpiar carrito');
+          notifyCartError('Carrito', message);
           throw error;
         }
       },
 
-      // Aplicar cupón
       applyCoupon: async (codigo: string) => {
         set({ isLoading: true, error: null });
-        
         try {
           const cart = await cartService.applyCoupon(codigo);
+          syncCartQuery(cart);
           set({ cart, isLoading: false });
-          toast.success('Cupón aplicado correctamente');
-        } catch (error: any) {
+          notifyCartSuccess('Carrito', 'Cupón aplicado correctamente');
+        } catch (error: unknown) {
+          const message =
+            error instanceof Error ? error.message : 'Error al aplicar cupón';
           set({
-            error: error.message || 'Error al aplicar cupón',
+            error: message,
             isLoading: false,
           });
-          toast.error(error.message || 'Error al aplicar cupón');
+          notifyCartError('Carrito', message);
           throw error;
         }
       },
 
-      // Remover cupón
       removeCoupon: async (codigo: string) => {
         set({ isLoading: true, error: null });
-        
         try {
           const cart = await cartService.removeCoupon(codigo);
+          syncCartQuery(cart);
           set({ cart, isLoading: false });
-          toast.success('Cupón removido');
-        } catch (error: any) {
+          notifyCartSuccess('Carrito', 'Cupón removido');
+        } catch (error: unknown) {
+          const message =
+            error instanceof Error ? error.message : 'Error al remover cupón';
           set({
-            error: error.message || 'Error al remover cupón',
+            error: message,
             isLoading: false,
           });
-          toast.error(error.message || 'Error al remover cupón');
+          notifyCartError('Carrito', message);
           throw error;
         }
       },
 
-      // Obtener cantidad de items
       getItemCount: () => {
         const { cart } = get();
-        if (!cart) return 0;
-        return cart.productos.reduce((total, item) => total + item.cantidad, 0);
+        if (!cart?.productos?.length) return 0;
+        return cart.productos.reduce((total, item) => total + safeInt(item.cantidad, 0), 0);
       },
 
-      // Obtener precio total
       getTotalPrice: () => {
         const { cart } = get();
-        return cart ? cart.total : 0;
+        return safeMoney(cart?.total);
       },
 
-      // Limpiar error
       clearError: () => {
         set({ error: null });
       },
@@ -177,6 +209,6 @@ export const useCartStore = create<CartState>()(
       partialize: (state) => ({
         cart: state.cart,
       }),
-    }
-  )
-); 
+    },
+  ),
+);

@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { authService } from '../../services/authService';
 
 const CompleteMerchantProfilePage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { usuario, rol } = location.state || {};
+  const state = location.state as { usuario?: any; rol?: string; pendingToken?: string } | undefined;
+  const { usuario, rol, pendingToken } = state || {};
   
   const [formData, setFormData] = useState({
     nombreEmpresa: '',
@@ -23,14 +25,14 @@ const CompleteMerchantProfilePage: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  if (!usuario || rol !== 'comerciante') {
-    navigate('/login');
+  if (!usuario || rol !== 'comerciante' || !pendingToken) {
+    navigate('/login', { replace: true });
     return null;
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!formData.nombreEmpresa || !formData.descripcionEmpresa || !formData.categoriaEmpresa || !formData.telefono) {
       setError('Por favor completa todos los campos requeridos (*)');
       return;
@@ -40,33 +42,33 @@ const CompleteMerchantProfilePage: React.FC = () => {
     setError('');
 
     try {
-      const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
-      const response = await fetch(`${API_BASE_URL}/api/auth/seleccionar-rol`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
+      const sitioWeb =
+        formData.sitioWeb?.trim() && /^https?:\/\//i.test(formData.sitioWeb.trim())
+          ? formData.sitioWeb.trim()
+          : undefined;
+
+      const data = await authService.selectRole(
+        {
           userId: usuario._id,
           rol: 'comerciante',
-          ...formData
-        }),
-      });
+          nombreEmpresa: formData.nombreEmpresa,
+          descripcionEmpresa: formData.descripcionEmpresa,
+          categoriaEmpresa: formData.categoriaEmpresa,
+          sitioWeb,
+          redesSociales: formData.redesSociales,
+          telefono: formData.telefono,
+          tipoDocumento: formData.tipoDocumento || undefined,
+          numeroDocumento: formData.numeroDocumento || undefined
+        },
+        pendingToken
+      );
 
-      const data = await response.json();
-
-      if (!response.ok || !data.exito) {
-        throw new Error(data.mensaje || 'Error al completar perfil');
+      if (data.requiereVerificacion && usuario.email) {
+        navigate(`/verificar-email?email=${encodeURIComponent(usuario.email)}`, { replace: true });
       }
-
-      // Redirigir a verificación de código
-      if (data.datos.requiereVerificacion) {
-        navigate('/verify-code', { state: { userId: data.datos.userId, email: usuario.email } });
-      }
-
-    } catch (error: any) {
-      console.error('Error:', error);
-      setError(error.message || 'Error al completar perfil');
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : 'Error al completar perfil';
+      setError(msg);
     } finally {
       setLoading(false);
     }

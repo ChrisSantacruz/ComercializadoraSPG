@@ -1,13 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Order } from '../../types';
-import LoadingSpinner from '../../components/ui/LoadingSpinner';
-import orderService from '../../services/orderService';
+import { useMerchantOrdersQuery, useUpdateMerchantOrderStatusMutation } from '../../lib/query/hooks/useOrdersQuery';
+import { MerchantDashboardSkeleton } from '../../components/merchant/MerchantDashboardSkeleton';
+import { ErrorState } from '../../components/ui/ErrorState';
 import { getImageUrl, getFirstImageUrl } from '../../utils/imageUtils';
 
 const MerchantOrders: React.FC = () => {
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [filterStatus, setFilterStatus] = useState('todos');
@@ -15,7 +13,28 @@ const MerchantOrders: React.FC = () => {
   const [selectedTransportadora, setSelectedTransportadora] = useState('servientrega');
   const [showTrackingModal, setShowTrackingModal] = useState(false);
   const [orderToUpdate, setOrderToUpdate] = useState<Order | null>(null);
-  const [pagination, setPagination] = useState({});
+  const [mutationError, setMutationError] = useState<string | null>(null);
+
+  const listFilters = useMemo(
+    () => ({
+      estado: filterStatus === 'todos' ? undefined : filterStatus,
+      page: 1,
+      limit: 10,
+    }),
+    [filterStatus],
+  );
+
+  const {
+    data: ordersResult,
+    isLoading,
+    isError,
+    error: queryError,
+    refetch,
+  } = useMerchantOrdersQuery(listFilters);
+
+  const statusMutation = useUpdateMerchantOrderStatusMutation();
+
+  const orders = ordersResult?.orders ?? [];
 
   // Estados disponibles para el comerciante
   const orderStatuses = [
@@ -28,87 +47,40 @@ const MerchantOrders: React.FC = () => {
     { value: 'cancelado', label: 'Cancelados', color: 'bg-red-100 text-red-800' }
   ];
 
-  useEffect(() => {
-    loadOrders();
-  }, [filterStatus]); // Recargar cuando cambie el filtro
-
-  const loadOrders = async () => {
+  const handleUpdateStatus = async (orderId: string, newStatus: string) => {
     try {
-      setLoading(true);
-      setError(null);
-      
-      console.log('🔍 Cargando órdenes del comerciante...');
-      console.log('🔧 Filtro estado:', filterStatus);
-      
-      const response = await orderService.getMerchantOrders({
-        estado: filterStatus === 'todos' ? undefined : filterStatus,
-        page: 1,
-        limit: 10
+      setMutationError(null);
+      await statusMutation.mutateAsync({
+        orderId,
+        data: { estado: newStatus },
       });
-      
-      console.log('📦 Respuesta del servidor:', response);
-      console.log('📦 Tipo de respuesta:', typeof response);
-      console.log('📦 Es array?:', Array.isArray(response));
-      console.log('📦 Length si es array:', Array.isArray(response) ? response.length : 'N/A');
-      
-      // FORZAR: Si recibimos un array con órdenes, usarlo directamente
-      if (Array.isArray(response) && response.length > 0) {
-        console.log('🎯 USANDO ARRAY DIRECTO - órdenes encontradas:', response.length);
-        response.forEach((orden, index) => {
-          console.log(`   ${index + 1}. ${orden.numeroOrden || orden._id} - Estado: ${orden.estado}`);
-        });
-        setOrders(response);
-        return; // SALIR AQUÍ
-      }
-      
-      // Si no es array, intentar extraer datos
-      console.log('📦 Keys de respuesta:', Object.keys(response || {}));
-      
-      // Extraer órdenes de cualquier formato de respuesta
-      let ordersData: Order[] = [];
-      
-      if (response && (response as any).datos) {
-        // Si la respuesta tiene estructura con datos
-        console.log('📋 Respuesta tiene estructura con datos');
-        ordersData = (response as any).datos;
-        if ((response as any).paginacion) {
-          console.log('📄 Paginación:', (response as any).paginacion);
-          setPagination((response as any).paginacion);
-        }
-      } else {
-        console.log('📋 Intentando extraer órdenes de otros formatos...');
-        // Buscar arrays en cualquier propiedad
-        const keys = Object.keys(response || {});
-        for (const key of keys) {
-          const value = (response as any)[key];
-          if (Array.isArray(value) && value.length > 0 && value[0].numeroOrden) {
-            console.log(`📋 Encontrado array de órdenes en propiedad: ${key}`);
-            ordersData = value;
-            break;
-          }
-        }
-      }
-      
-      console.log('✅ Órdenes procesadas:', ordersData.length);
-      if (ordersData.length > 0) {
-        console.log('📋 Primera orden:', ordersData[0]);
-      }
-      
-      setOrders(ordersData);
-      
+      setShowModal(false);
+      setSelectedOrder(null);
     } catch (err) {
-      console.error('❌ Error cargando órdenes:', err);
-      if (err instanceof Error) {
-        console.error('❌ Error detalle:', err.message);
-        console.error('❌ Error stack:', err.stack);
-        setError(err.message);
-      } else {
-        console.error('❌ Error desconocido:', err);
-        setError('Error cargando órdenes');
-      }
-      setOrders([]);
-    } finally {
-      setLoading(false);
+      setMutationError(err instanceof Error ? err.message : 'Error actualizando estado');
+    }
+  };
+
+  const handleAddTracking = async () => {
+    if (!orderToUpdate || !trackingNumber.trim()) return;
+
+    try {
+      setMutationError(null);
+      await statusMutation.mutateAsync({
+        orderId: orderToUpdate._id,
+        data: {
+          estado: 'enviado',
+          numeroSeguimiento: trackingNumber,
+          transportadora: selectedTransportadora,
+        },
+      });
+
+      setShowTrackingModal(false);
+      setTrackingNumber('');
+      setOrderToUpdate(null);
+      setSelectedTransportadora('servientrega');
+    } catch (err) {
+      setMutationError(err instanceof Error ? err.message : 'Error agregando seguimiento');
     }
   };
 
@@ -132,52 +104,34 @@ const MerchantOrders: React.FC = () => {
     return statusData ? statusData.label : status;
   };
 
-  const handleUpdateStatus = async (orderId: string, newStatus: string) => {
-    try {
-      // Usar el servicio real para actualizar estado
-      await orderService.updateOrderStatusWithTracking(orderId, {
-        estado: newStatus
-      });
-      
-      // Recargar órdenes después de la actualización
-      await loadOrders();
-      
-      setShowModal(false);
-      setSelectedOrder(null);
-    } catch (err) {
-      console.error('Error actualizando estado:', err);
-      setError(err instanceof Error ? err.message : 'Error actualizando estado');
-    }
-  };
+  const filteredOrders = orders ?? [];
 
-  const handleAddTracking = async () => {
-    if (!orderToUpdate || !trackingNumber.trim()) return;
-
-    try {
-      // Usar el servicio real para actualizar estado con seguimiento
-      await orderService.updateOrderStatusWithTracking(orderToUpdate._id, {
-        estado: 'enviado',
-        numeroSeguimiento: trackingNumber,
-        transportadora: selectedTransportadora
-      });
-      
-      // Recargar órdenes después de la actualización
-      await loadOrders();
-
-      setShowTrackingModal(false);
-      setTrackingNumber('');
-      setOrderToUpdate(null);
-      setSelectedTransportadora('servientrega');
-    } catch (err) {
-      console.error('Error agregando seguimiento:', err);
-      setError(err instanceof Error ? err.message : 'Error agregando seguimiento');
-    }
-  };
-
-  const filteredOrders = orders || [];
   const pendingOrdersCount = (orders || []).filter(order => (order.estado || 'pendiente') === 'pendiente').length;
+  const error = mutationError;
 
-  if (loading) return <LoadingSpinner />;
+  if (isLoading && orders.length === 0) {
+    return (
+      <div className="min-h-screen bg-gray-50 py-8">
+        <div className="container mx-auto px-4">
+          <MerchantDashboardSkeleton />
+        </div>
+      </div>
+    );
+  }
+
+  if (isError && orders.length === 0) {
+    return (
+      <div className="min-h-screen bg-gray-50 py-8">
+        <div className="container mx-auto px-4">
+          <ErrorState
+            title="Error cargando pedidos"
+            message={queryError instanceof Error ? queryError.message : 'Error de red'}
+            onRetry={() => void refetch()}
+          />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 py-8">
@@ -193,32 +147,11 @@ const MerchantOrders: React.FC = () => {
               </div>
               <div>
                 <p className="text-sm">{error}</p>
-                <p className="text-xs mt-1">Mostrando datos de ejemplo. Verifica tu conexión.</p>
+                <p className="text-xs mt-1">Revisa tu conexión o vuelve a intentar en unos segundos.</p>
               </div>
             </div>
           </div>
         )}
-
-        {/* Botón de debugging temporal */}
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="text-sm font-medium text-blue-800">🔧 Modo Debug</h3>
-              <p className="text-xs text-blue-600 mt-1">
-                Órdenes en memoria: {orders.length} | Filtro: {filterStatus}
-              </p>
-            </div>
-            <button
-              onClick={() => {
-                console.log('🔧 FORZANDO RECARGA...');
-                loadOrders();
-              }}
-              className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded text-sm"
-            >
-              🔄 Recargar
-            </button>
-          </div>
-        </div>
 
         {/* Header */}
         <div className="bg-white rounded-xl shadow-lg p-8 mb-8">

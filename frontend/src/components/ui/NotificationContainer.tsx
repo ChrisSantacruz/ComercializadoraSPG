@@ -1,5 +1,6 @@
-import React, { createContext, useContext, useState, useCallback } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import NotificationToast, { Notification } from './NotificationToast';
+import { registerAppNotificationSink } from '../../lib/appNotifications';
 
 interface NotificationContextType {
   showNotification: (notification: Omit<Notification, 'id'>) => void;
@@ -31,14 +32,42 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({ chil
   }, []);
 
   const showNotification = useCallback((notification: Omit<Notification, 'id'>) => {
-    const id = Date.now().toString() + Math.random().toString(36).substr(2, 9);
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
     const newNotification: Notification = {
       ...notification,
       id,
-      duration: notification.duration || 5000, // 5 segundos por defecto
+      duration: notification.duration || 5000,
     };
 
-    setNotifications(prev => [...prev, newNotification]);
+    setNotifications((prev) => {
+      const dropCartSuccess =
+        newNotification.type === 'success' &&
+        (newNotification.title === 'Carrito' || newNotification.title === 'Carrito actualizado');
+
+      const base = dropCartSuccess
+        ? prev.filter(
+            (n) =>
+              !(
+                n.type === 'success' &&
+                (n.title === 'Carrito' || n.title === 'Carrito actualizado')
+              ),
+          )
+        : prev;
+
+      if (
+        base.some(
+          (n) =>
+            n.type === newNotification.type &&
+            n.title === newNotification.title &&
+            n.message === newNotification.message,
+        )
+      ) {
+        return base;
+      }
+
+      const merged = [...base, newNotification];
+      return merged.length > 4 ? merged.slice(-4) : merged;
+    });
   }, []);
 
   const showSuccess = useCallback((title: string, message: string, action?: Notification['action']) => {
@@ -78,6 +107,14 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({ chil
     });
   }, [showNotification]);
 
+  useEffect(() => {
+    registerAppNotificationSink({
+      showSuccess,
+      showError,
+    });
+    return () => registerAppNotificationSink(null);
+  }, [showSuccess, showError]);
+
   const contextValue: NotificationContextType = {
     showNotification,
     showSuccess,
@@ -90,21 +127,14 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({ chil
     <NotificationContext.Provider value={contextValue}>
       {children}
       
-      {/* Contenedor de notificaciones */}
-      <div className="fixed top-6 right-6 z-50 space-y-3 max-w-sm">
-        {notifications.map((notification, index) => (
-          <div
-            key={notification.id}
-            className="transform transition-all duration-300 ease-out"
-            style={{
-              animationDelay: `${index * 100}ms`
-            }}
-          >
-            <NotificationToast
-              notification={notification}
-              onClose={removeNotification}
-            />
-          </div>
+      {/* Toasts: abajo en móvil (pulgar / safe-area), esquina superior derecha en desktop — una sola cola */}
+      <div
+        className="pointer-events-none fixed inset-x-0 bottom-0 z-toast flex max-h-[42dvh] flex-col gap-3 overflow-y-auto overscroll-contain px-4 pb-[max(1.5rem,env(safe-area-inset-bottom,0px))] pt-4 sm:inset-x-auto sm:bottom-auto sm:right-[max(1rem,env(safe-area-inset-right,0px))] sm:top-[max(5.5rem,env(safe-area-inset-top,0px))] sm:max-h-none sm:max-w-md sm:flex-col sm:items-end sm:overflow-visible sm:px-0 sm:pb-6 sm:pt-4"
+        aria-live="polite"
+        aria-relevant="additions text"
+      >
+        {notifications.map((notification) => (
+          <NotificationToast key={notification.id} notification={notification} onClose={removeNotification} />
         ))}
       </div>
     </NotificationContext.Provider>

@@ -1,88 +1,64 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { authService } from '../../services/authService';
 import { useAuthStore } from '../../stores/authStore';
 import LoadingSpinner from '../../components/ui/LoadingSpinner';
 
 const OAuthCallback: React.FC = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { updateUser } = useAuthStore();
+  const setSession = useAuthStore((s) => s.setSession);
+  const [message, setMessage] = useState('Completando autenticación...');
 
   useEffect(() => {
-    const handleCallback = () => {
-      const token = searchParams.get('token');
-      const userParam = searchParams.get('user');
+    const run = async () => {
+      const code = searchParams.get('code');
       const error = searchParams.get('error');
 
       if (error) {
-        // Manejar errores de OAuth
-        console.error('Error de OAuth:', error);
-        
-        let errorMessage = 'Error en la autenticación';
-        switch (error) {
-          case 'oauth_error':
-            errorMessage = 'Error durante la autenticación con la red social';
-            break;
-          case 'oauth_cancelled':
-            errorMessage = 'Autenticación cancelada por el usuario';
-            break;
-          default:
-            errorMessage = 'Error desconocido en la autenticación';
-        }
-        
-        navigate('/login?error=' + encodeURIComponent(errorMessage));
+        const errorMessage =
+          error === 'oauth_cancelled'
+            ? 'Autenticación cancelada'
+            : 'Error en la autenticación con la red social';
+        navigate(`/login?error=${encodeURIComponent(errorMessage)}`, { replace: true });
         return;
       }
 
-      if (token && userParam) {
-        try {
-          // Decodificar datos del usuario
-          const userData = JSON.parse(decodeURIComponent(userParam));
-          
-          // Guardar token en localStorage
-          const authData = {
-            state: {
-              user: userData,
-              token: token,
-              isAuthenticated: true
-            }
-          };
-          localStorage.setItem('auth-storage', JSON.stringify(authData));
-          
-          // Actualizar store
-          updateUser(userData);
-          
-          // Redirigir al dashboard o home
-          navigate('/', { replace: true });
-          
-        } catch (error) {
-          console.error('Error procesando datos de OAuth:', error);
-          navigate('/login?error=' + encodeURIComponent('Error procesando la autenticación'));
-        }
-      } else {
-        // Faltan parámetros
-        navigate('/login?error=' + encodeURIComponent('Datos de autenticación incompletos'));
+      if (!code) {
+        navigate(`/login?error=${encodeURIComponent('Enlace de autenticación incompleto')}`, {
+          replace: true
+        });
+        return;
+      }
+
+      try {
+        setMessage('Intercambiando código de sesión...');
+        const session = await authService.exchangeOAuthCode(code);
+        setSession({
+          user: session.usuario,
+          token: session.token,
+          refreshToken: session.refreshToken ?? null
+        });
+        navigate('/', { replace: true });
+      } catch (e) {
+        navigate(`/login?error=${encodeURIComponent('No se pudo completar el inicio de sesión')}`, {
+          replace: true
+        });
       }
     };
 
-    handleCallback();
-  }, [searchParams, navigate, updateUser]);
+    void run();
+  }, [navigate, searchParams, setSession]);
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <div className="max-w-md w-full space-y-8">
-        <div className="text-center">
-          <LoadingSpinner size="lg" />
-          <h2 className="mt-6 text-3xl font-extrabold text-gray-900">
-            Completando autenticación...
-          </h2>
-          <p className="mt-2 text-sm text-gray-600">
-            Por favor espera mientras procesamos tu información
-          </p>
-        </div>
+      <div className="max-w-md w-full space-y-8 text-center px-4">
+        <LoadingSpinner size="lg" />
+        <h2 className="text-2xl font-extrabold text-gray-900">{message}</h2>
+        <p className="text-sm text-gray-600">Por favor espera un momento.</p>
       </div>
     </div>
   );
 };
 
-export default OAuthCallback; 
+export default OAuthCallback;

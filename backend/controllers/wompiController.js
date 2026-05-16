@@ -1,8 +1,6 @@
 const wompiService = require('../services/wompiService');
+const wompiOrderSync = require('../services/wompiOrderSync');
 const Order = require('../models/Order');
-const Notification = require('../models/Notification');
-const Product = require('../models/Product');
-const { sendOrderConfirmationEmail } = require('../utils/email');
 
 const wompiController = {
     /**
@@ -11,14 +9,12 @@ const wompiController = {
     async createPaymentLink(req, res) {
         try {
             const orderData = req.body;
-            const userId = req.usuario?._id || 'test-user'; // Fallback para pruebas
-
-            console.log('🚀 Creating payment link with order data:', {
-                orderId: orderData.orderId,
-                amount: orderData.amount,
-                customerName: orderData.customerData?.fullName,
-                user: userId
-            });
+            if (process.env.NODE_ENV === 'production' && !req.usuario?._id) {
+                return res.status(401).json({
+                    success: false,
+                    message: 'No autorizado'
+                });
+            }
 
             // Validaciones básicas
             if (!orderData.amount || !orderData.orderId) {
@@ -42,12 +38,20 @@ const wompiController = {
                 });
             }
 
+            const legalIdRaw = (orderData.customerData?.legalId || '').toString().replace(/\D/g, '');
+            if (legalIdRaw.length < 6 || legalIdRaw.length > 11) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'El documento del pagador es obligatorio y debe tener entre 6 y 11 dígitos.'
+                });
+            }
+
             // Preparar datos del cliente desde el request
             const customerData = {
                 name: orderData.customerData?.fullName || 'Cliente',
-                phone: orderData.customerData?.phoneNumber || '3000000000',
+                phone: (orderData.customerData?.phoneNumber || '').toString().replace(/\s/g, '') || '3000000000',
                 email: orderData.customerData?.email || '',
-                document: orderData.customerData?.legalId || '12345678',
+                document: legalIdRaw,
                 documentType: orderData.customerData?.legalIdType || 'CC'
             };
 
@@ -61,13 +65,6 @@ const wompiController = {
                 };
             }
 
-            console.log('👤 Customer data prepared:', {
-                name: customerData.name,
-                phone: customerData.phone,
-                hasEmail: !!customerData.email,
-                hasAddress: !!customerData.address
-            });
-
             // Crear enlace de pago
             const paymentData = {
                 amount: orderData.amount,
@@ -77,21 +74,9 @@ const wompiController = {
                 redirectUrl: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/payment/wompi/return?orderId=${orderData.orderId}&reference=${orderData.orderId}`
             };
 
-            console.log('💳 Creating payment link with data:', {
-                amount: paymentData.amount,
-                reference: paymentData.reference,
-                customerName: customerData.name,
-                redirectUrl: paymentData.redirectUrl
-            });
-
             const result = await wompiService.createPaymentLink(paymentData);
 
             if (result.success) {
-                console.log('✅ Payment link created successfully:', {
-                    paymentLinkId: result.data?.data?.id,
-                    permalink: result.data?.data?.permalink
-                });
-
                 res.json({
                     success: true,
                     data: {
@@ -102,8 +87,6 @@ const wompiController = {
                     }
                 });
             } else {
-                console.error('❌ Failed to create payment link:', result.error);
-
                 res.status(400).json({
                     success: false,
                     message: 'Error al crear enlace de pago',
@@ -115,7 +98,6 @@ const wompiController = {
                 });
             }
         } catch (error) {
-            console.error('💥 Exception in createPaymentLink:', error);
             res.status(500).json({
                 success: false,
                 message: 'Error interno del servidor',
@@ -130,7 +112,7 @@ const wompiController = {
     async createPaymentLinkFromOrder(req, res) {
         try {
             const { orderId } = req.body;
-            const userId = req.user.id;
+            const userId = req.usuario._id.toString();
 
             console.log('🚀 Creating payment link for order:', orderId, 'user:', userId);
 
@@ -293,138 +275,112 @@ const wompiController = {
     },
 
     /**
-     * Webhook para recibir eventos de Wompi
+     * Webhook Wompi: reconoce el evento y reconcilia contra GET /transactions/:id (fuente de verdad).
+     * El cuerpo llega como Buffer (express.raw).
      */
     async webhook(req, res) {
         try {
-            const signature = req.headers['x-signature'];
-            const timestamp = req.headers['x-timestamp'];
-            const eventData = req.body;
+            const rawBody = Buffer.isBuffer(req.body)
+                ? req.body.toString('utf8')
+                : typeof req.body === 'string'
+                    ? req.body
+                    : JSON.stringify(req.body);
 
-            console.log('Webhook received:', {
-                signature,
-                timestamp,
-                eventData
-            });
-
-            // Validar integridad del evento
-            if (!wompiService.validateEventIntegrity(signature, timestamp, eventData)) {
-                console.error('Invalid webhook signature');
-                return res.status(401).json({ error: 'Invalid signature' });
+            let eventData;
+            try {
+                eventData = JSON.parse(rawBody);
+            } catch (parseErr) {
+                return res.status(400).json({ error: 'invalid_json' });
             }
 
-            // Procesar evento
-            const processResult = wompiService.processWebhookEvent(eventData);
-            
-            if (processResult.processed) {
-                await this.handlePaymentEvent(eventData);
+            const transactionId = wompiOrderSync.extractTransactionIdFromWebhookEvent(eventData);
+            if (!transactionId) {
+                return res.status(200).json({ received: true, ignored: true });
             }
 
-            res.status(200).json({ received: true });
+            const syncResult = await wompiOrderSync.reconcileTransactionById(transactionId);
+            if (!syncResult.ok && syncResult.reason === 'remote_fetch_failed') {
+                return res.status(503).json({ error: 'wompi_unavailable' });
+            }
+
+            return res.status(200).json({ received: true });
         } catch (error) {
             console.error('Error processing webhook:', error);
-            res.status(500).json({ error: 'Internal server error' });
+            return res.status(500).json({ error: 'Internal server error' });
         }
     },
 
     /**
-     * Manejar eventos de pago
+     * Tras redirect desde Wompi: el cliente autenticado confirma estado consultando la API de Wompi en servidor.
      */
-    async handlePaymentEvent(eventData) {
+    async confirmPaymentReturn(req, res) {
         try {
-            const { event, data } = eventData;
-
-            if (event === 'transaction.updated' && data.transaction) {
-                const transaction = data.transaction;
-                const reference = transaction.reference;
-
-                // Buscar la orden por referencia
-                const order = await Order.findById(reference);
-                if (!order) {
-                    console.error(`Order not found for reference: ${reference}`);
-                    return;
-                }
-
-                // Actualizar estado según el estado de la transacción
-                switch (transaction.status) {
-                    case 'APPROVED':
-                        order.status = 'paid';
-                        order.paymentInfo.transactionId = transaction.id;
-                        order.paymentInfo.paymentStatus = 'approved';
-                        order.paymentInfo.paidAt = new Date();
-                        
-                        // AHORA SÍ descontar el stock de los productos
-                        for (const item of order.productos) {
-                            try {
-                                await Product.findByIdAndUpdate(item.producto, {
-                                    $inc: { 
-                                        stock: -item.cantidad,
-                                        'estadisticas.vendidos': item.cantidad
-                                    }
-                                });
-                                console.log(`✅ Stock actualizado para producto ${item.producto}: -${item.cantidad}`);
-                            } catch (stockError) {
-                                console.error(`❌ Error actualizando stock del producto ${item.producto}:`, stockError);
-                            }
-                        }
-                        
-                        // Crear notificación de pago exitoso
-                        await Notification.create({
-                            user: order.cliente,
-                            type: 'payment_success',
-                            title: 'Pago exitoso',
-                            message: `Tu pago por $${order.total.toLocaleString()} ha sido procesado exitosamente`,
-                            relatedOrder: order._id
-                        });
-                        
-                        // Enviar comprobante de pago por email
-                        try {
-                            // Obtener datos completos de la orden con población
-                            const orderWithDetails = await Order.findById(order._id)
-                                .populate('cliente', 'nombre email')
-                                .populate('productos.producto', 'nombre imagenPrincipal');
-                            
-                            await sendOrderConfirmationEmail(orderWithDetails);
-                            console.log(`📧 Email de confirmación enviado a ${orderWithDetails.cliente.email}`);
-                        } catch (emailError) {
-                            console.error('❌ Error enviando email de confirmación:', emailError);
-                            // No fallar el webhook por error de email
-                        }
-                        break;
-
-                    case 'DECLINED':
-                        order.status = 'payment_failed';
-                        order.paymentInfo.paymentStatus = 'declined';
-                        order.paymentInfo.failureReason = transaction.status_message;
-                        
-                        // Crear notificación de pago fallido
-                        await Notification.create({
-                            user: order.cliente,
-                            type: 'payment_failed',
-                            title: 'Pago rechazado',
-                            message: `Tu pago ha sido rechazado. Motivo: ${transaction.status_message}`,
-                            relatedOrder: order._id
-                        });
-                        break;
-
-                    case 'PENDING':
-                        order.status = 'payment_pending';
-                        order.paymentInfo.transactionId = transaction.id;
-                        order.paymentInfo.paymentStatus = 'pending';
-                        break;
-
-                    case 'ERROR':
-                        order.status = 'payment_failed';
-                        order.paymentInfo.paymentStatus = 'error';
-                        order.paymentInfo.failureReason = transaction.status_message;
-                        break;
-                }
-
-                await order.save();
-                console.log(`Order ${order._id} updated to status: ${order.status}`);
+            const { transactionId, orderId } = req.body || {};
+            if (!transactionId || !orderId) {
+                return res.status(400).json({
+                    exito: false,
+                    mensaje: 'transactionId y orderId son obligatorios'
+                });
             }
+
+            const userId = req.usuario._id.toString();
+            const order = await Order.findById(orderId);
+            if (!order) {
+                return res.status(404).json({ exito: false, mensaje: 'Orden no encontrada' });
+            }
+            if (order.cliente.toString() !== userId) {
+                return res.status(403).json({ exito: false, mensaje: 'No autorizado' });
+            }
+
+            const remote = await wompiService.getTransactionStatus(transactionId);
+            if (!remote.success) {
+                return res.status(502).json({
+                    exito: false,
+                    mensaje: 'No se pudo verificar el pago con Wompi',
+                    codigo: 'WOMPI_VERIFY_FAILED'
+                });
+            }
+
+            const tx = remote.data?.data || remote.data;
+            if (!tx || String(tx.reference) !== String(orderId)) {
+                return res.status(400).json({
+                    exito: false,
+                    mensaje: 'La transacción no corresponde a este pedido',
+                    codigo: 'REFERENCE_MISMATCH'
+                });
+            }
+
+            const expected = wompiOrderSync.expectedAmountInCents(order);
+            if (Number.isFinite(tx.amount_in_cents) && tx.amount_in_cents !== expected) {
+                return res.status(400).json({
+                    exito: false,
+                    mensaje: 'El monto de la transacción no coincide con el pedido',
+                    codigo: 'AMOUNT_MISMATCH'
+                });
+            }
+
+            const syncResult = await wompiOrderSync.syncOrderWithTransaction(tx);
+            if (!syncResult.ok) {
+                return res.status(400).json({
+                    exito: false,
+                    mensaje: syncResult.reason || 'No se pudo actualizar el pedido',
+                    datos: syncResult
+                });
+            }
+
+            const fresh = await Order.findById(orderId).lean();
+            return res.json({
+                exito: true,
+                mensaje: 'Estado verificado',
+                datos: {
+                    order: fresh,
+                    transactionStatus: tx.status,
+                    sync: syncResult
+                }
+            });
         } catch (error) {
-            console.error('Error handling payment event:', error);
+            console.error('confirmPaymentReturn:', error);
+            return res.status(500).json({ exito: false, mensaje: 'Error interno del servidor' });
         }
     },
 
@@ -533,7 +489,7 @@ const wompiController = {
     async createCardTransaction(req, res) {
         try {
             const { orderId, cardToken, acceptanceToken } = req.body;
-            const userId = req.user.id;
+            const userId = req.usuario._id.toString();
 
             // Buscar la orden
             const order = await Order.findById(orderId).populate('cliente');

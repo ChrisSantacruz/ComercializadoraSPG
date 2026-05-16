@@ -58,14 +58,9 @@ export interface AnalyticsData {
 export const analyticsService = {
   // Obtener analytics del comerciante
   getMerchantAnalytics: async (periodo?: string): Promise<AnalyticsData> => {
-    console.log('🔍 AnalyticsService: Iniciando petición a /analytics/merchant');
-    console.log('🔍 AnalyticsService: Parámetros:', { periodo });
-    
     const response = await api.get<ApiResponse<AnalyticsData>>('/analytics/merchant', {
       params: { periodo }
     });
-    
-    console.log('✅ AnalyticsService: Respuesta recibida:', response.data);
     return handleApiResponse(response);
   },
 
@@ -77,8 +72,7 @@ export const analyticsService = {
       } catch (error: any) {
         if (i === maxRetries - 1) throw error;
         if (error.response?.status === 429) {
-          console.log(`⚠️ Rate limit alcanzado, esperando ${2000 * (i + 1)}ms antes de reintentar...`);
-          await new Promise(resolve => setTimeout(resolve, 2000 * (i + 1)));
+          await new Promise((resolve) => setTimeout(resolve, 2000 * (i + 1)));
         } else {
           throw error;
         }

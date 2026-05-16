@@ -62,8 +62,7 @@ const ReviewForm: React.FC<ReviewFormProps> = ({
       showSuccess('Reseña enviada', 'Tu reseña ha sido publicada exitosamente');
       onReviewSubmitted();
       onClose();
-    } catch (error) {
-      console.error('Error enviando reseña:', error);
+    } catch {
       showError('Error', 'Error al enviar la reseña');
     } finally {
       setLoading(false);

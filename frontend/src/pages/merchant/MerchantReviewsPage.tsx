@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { CheckCircleIcon } from '@heroicons/react/24/outline';
 import api from '../../services/api';
-import { useAuthStore } from '../../stores/authStore';
 
 interface Review {
   _id: string;
@@ -45,7 +45,6 @@ const MerchantReviewsPage: React.FC = () => {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [selectedFilter, setSelectedFilter] = useState<string>('all');
-  const { user } = useAuthStore();
 
   useEffect(() => {
     loadReviews();
@@ -67,8 +66,8 @@ const MerchantReviewsPage: React.FC = () => {
         setReviews(response.data.datos.reseñas || []);
         setTotalPages(response.data.datos.paginacion?.totalPaginas || 1);
       }
-    } catch (error) {
-      console.error('Error cargando reseñas:', error);
+    } catch {
+      setReviews([]);
     } finally {
       setLoading(false);
     }
@@ -80,8 +79,8 @@ const MerchantReviewsPage: React.FC = () => {
       if (response.data.exito) {
         setStats(response.data.datos);
       }
-    } catch (error) {
-      console.error('Error cargando estadísticas:', error);
+    } catch {
+      setStats(null);
     }
   };
 
@@ -178,7 +177,11 @@ const MerchantReviewsPage: React.FC = () => {
                 <div className="flex items-start justify-between mb-4">
                   <div className="flex items-start space-x-4">
                     <img
-                      src={review.producto.imagenPrincipal || '/placeholder.jpg'}
+                      src={
+                        review.producto.imagenPrincipal?.trim()
+                          ? review.producto.imagenPrincipal
+                          : '/images/default-product.svg'
+                      }
                       alt={review.producto.nombre}
                       className="w-20 h-20 rounded-lg object-cover"
                     />
@@ -195,8 +198,9 @@ const MerchantReviewsPage: React.FC = () => {
                     </div>
                   </div>
                   {review.verificada && (
-                    <span className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm font-medium">
-                      ✓ Compra Verificada
+                    <span className="inline-flex items-center gap-1 px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm font-medium">
+                      <CheckCircleIcon className="h-4 w-4 shrink-0" aria-hidden />
+                      Compra verificada
                     </span>
                   )}
                 </div>
@@ -204,11 +208,11 @@ const MerchantReviewsPage: React.FC = () => {
                 {/* Usuario */}
                 <div className="flex items-center mb-3">
                   <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center">
-                    {review.usuario.avatar ? (
+                    {review.usuario.avatar?.trim() ? (
                       <img
-                        src={review.usuario.avatar}
+                        src={review.usuario.avatar.trim()}
                         alt={review.usuario.nombre}
-                        className="w-10 h-10 rounded-full"
+                        className="w-10 h-10 rounded-full object-cover"
                       />
                     ) : (
                       <span className="text-gray-600 font-medium">
@@ -261,22 +265,26 @@ const MerchantReviewsPage: React.FC = () => {
                 {/* Imágenes y Videos */}
                 {(review.imagenes || review.videos) && (
                   <div className="grid grid-cols-3 gap-2 mb-4">
-                    {review.imagenes?.map((img, index) => (
+                    {review.imagenes?.map((img, index) =>
+                      img.url?.trim() ? (
                       <img
                         key={index}
-                        src={img.url}
+                        src={img.url.trim()}
                         alt={`Imagen ${index + 1}`}
                         className="w-full h-24 object-cover rounded-lg"
                       />
-                    ))}
-                    {review.videos?.map((video, index) => (
+                      ) : null
+                    )}
+                    {review.videos?.map((video, index) =>
+                      video.url?.trim() ? (
                       <video
                         key={index}
-                        src={video.url}
+                        src={video.url.trim()}
                         className="w-full h-24 object-cover rounded-lg"
                         controls
                       />
-                    ))}
+                      ) : null
+                    )}
                   </div>
                 )}
 

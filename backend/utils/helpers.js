@@ -50,11 +50,12 @@ const errorResponse = (res, mensaje, codigo = 500, detalles = null) => {
     exito: false,
     mensaje
   };
-  
-  if (detalles) {
+
+  // DEC-API-006: never leak raw internals / stack payloads to clients in production
+  if (detalles && process.env.NODE_ENV === 'development') {
     respuesta.detalles = detalles;
   }
-  
+
   return res.status(codigo).json(respuesta);
 };
 
@@ -309,20 +310,12 @@ module.exports = {
   queryStringAObjeto
 };
 
-// Helper para convertir URLs locales a placeholder
+// Rutas /uploads/ y URLs absolutas se devuelven tal cual; el cliente concatena el origen de la API.
 const transformarUrlImagen = (url) => {
   if (!url) return null;
-  
-  // Si ya es una URL completa de Cloudinary o externa, devolverla tal cual
   if (url.startsWith('http://') || url.startsWith('https://')) {
     return url;
   }
-  
-  // Si es una ruta local que empieza con /uploads/, usar placeholder
-  if (url.startsWith('/uploads/')) {
-    return 'https://placehold.co/400x400/e5e7eb/6b7280?text=Imagen+No+Disponible';
-  }
-  
   return url;
 };
 

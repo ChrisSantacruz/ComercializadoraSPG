@@ -1,140 +1,156 @@
 import api, { handleApiResponse } from './api';
-import axios from 'axios';
 import { User, AuthResponse, LoginCredentials, RegisterData } from '../types';
+import { normalizeUser } from '../auth/normalizeUser';
+
+function mapAuthPayload(raw: { usuario: unknown; token: string; refreshToken?: string | null }): AuthResponse {
+  return {
+    usuario: normalizeUser(raw.usuario),
+    token: raw.token,
+    refreshToken: raw.refreshToken ?? null
+  };
+}
 
 export const authService = {
-  // Login
   login: async (credentials: LoginCredentials): Promise<AuthResponse> => {
     const response = await api.post('/auth/login', credentials);
-    return handleApiResponse<AuthResponse>(response);
+    const d = handleApiResponse<{ usuario: unknown; token: string; refreshToken?: string }>(response);
+    return mapAuthPayload(d);
   },
 
-  // Registro
-  register: async (userData: RegisterData): Promise<AuthResponse> => {
+  /** Registro inicial (sin sesión JWT hasta verificar email) */
+  registerAccount: async (userData: RegisterData): Promise<{ usuario: User }> => {
     const response = await api.post('/auth/register', userData);
-    return handleApiResponse<AuthResponse>(response);
+    const d = handleApiResponse<{ usuario: unknown }>(response);
+    return { usuario: normalizeUser(d.usuario) };
   },
 
-  // Obtener perfil
   getProfile: async (): Promise<User> => {
     const response = await api.get('/users/profile');
-    const data = handleApiResponse<{ usuario: User; estadisticas: any }>(response);
-    return data.usuario;
+    const data = handleApiResponse<{ usuario: unknown; estadisticas: unknown }>(response);
+    return normalizeUser(data.usuario);
   },
 
-  // Actualizar perfil
   updateProfile: async (userData: Partial<User>): Promise<User> => {
     const response = await api.put('/users/profile', userData);
-    return handleApiResponse<User>(response);
+    const raw = handleApiResponse<unknown>(response);
+    return normalizeUser(raw);
   },
 
-  // Cambiar contraseña
   changePassword: async (currentPassword: string, newPassword: string): Promise<void> => {
     const response = await api.put('/auth/password', {
       currentPassword,
-      newPassword,
+      newPassword
     });
     return handleApiResponse<void>(response);
   },
 
-  // Solicitar recuperación de contraseña
   forgotPassword: async (email: string): Promise<void> => {
     const response = await api.post('/auth/forgot-password', { email });
     return handleApiResponse<void>(response);
   },
 
-  // Resetear contraseña
   resetPassword: async (token: string, newPassword: string): Promise<void> => {
-    const response = await api.put(`/auth/reset-password/${token}`, {
-      newPassword,
+    const response = await api.put(`/auth/reset-password/${encodeURIComponent(token)}`, {
+      newPassword
     });
     return handleApiResponse<void>(response);
   },
 
-  // Verificar email (legacy con token)
   verifyEmail: async (token: string): Promise<void> => {
     const response = await api.post('/auth/verify-email', { token });
     return handleApiResponse<void>(response);
   },
 
-  // Verificar email con código
   verifyEmailWithCode: async (email: string, codigo: string): Promise<AuthResponse> => {
     const response = await api.post('/auth/verificar-codigo', { email, codigo });
-    return handleApiResponse<AuthResponse>(response);
+    const d = handleApiResponse<{ usuario: unknown; token: string; refreshToken?: string }>(response);
+    return mapAuthPayload(d);
   },
 
-  // Reenviar código de verificación
   resendVerificationCode: async (email: string): Promise<void> => {
-    try {
-      console.log('📧 Reenviando código de verificación para:', email);
-      
-      // Crear instancia con timeout extendido para operaciones de email
-      const emailApi = axios.create({
-        baseURL: api.defaults.baseURL,
-        timeout: 30000, // 30 segundos para operaciones de email
-        headers: api.defaults.headers
-      });
-
-      const response = await emailApi.post('/auth/reenviar-codigo', { email });
-      console.log('✅ Respuesta exitosa del servidor:', response.status);
-      return handleApiResponse<void>(response);
-    } catch (error: any) {
-      console.error('❌ Error al reenviar código:', error);
-      if (error.code === 'ECONNABORTED' || error.message?.includes('timeout')) {
-        throw new Error('El envío del código está tomando más tiempo de lo esperado. Por favor, espera unos minutos antes de intentar nuevamente.');
-      }
-      if (error.response?.status === 404) {
-        console.error('🔍 Endpoint no encontrado - posible problema de deployment');
-        throw new Error('El servicio de verificación no está disponible temporalmente. Inténtalo de nuevo en unos minutos.');
-      }
-      throw error;
-    }
+    const response = await api.post('/auth/reenviar-codigo', { email }, { timeout: 45000 });
+    return handleApiResponse<void>(response);
   },
 
-  // Reenviar email de verificación (legacy)
   resendVerificationEmail: async (): Promise<void> => {
     const response = await api.post('/auth/resend-verification');
     return handleApiResponse<void>(response);
   },
 
-  // Logout
   logout: async (): Promise<void> => {
     const response = await api.post('/auth/logout');
-    localStorage.removeItem('auth-storage');
     return handleApiResponse<void>(response);
   },
 
-  // Subir avatar
+  exchangeOAuthCode: async (code: string): Promise<AuthResponse> => {
+    const response = await api.post('/auth/oauth/exchange', { code });
+    const d = handleApiResponse<{ usuario: unknown; token: string; refreshToken: string }>(response);
+    return mapAuthPayload(d);
+  },
+
+  firebaseLogin: async (payload: {
+    idToken: string;
+    provider: 'google';
+    email: string | null;
+    nombre: string | null;
+    photoURL: string | null;
+  }): Promise<{
+    requiereSeleccionRol?: boolean;
+    pendingToken?: string;
+    usuario?: unknown;
+    token?: string;
+    refreshToken?: string;
+  }> => {
+    const response = await api.post('/auth/firebase-login', payload);
+    return handleApiResponse(response);
+  },
+
+  selectRole: async (
+    body: Record<string, unknown>,
+    pendingToken: string
+  ): Promise<{
+    requiereVerificacion?: boolean;
+    userId?: string;
+    token?: string;
+    refreshToken?: string;
+    usuario?: unknown;
+  }> => {
+    const response = await api.post('/auth/seleccionar-rol', body, {
+      headers: { Authorization: `Bearer ${pendingToken}` }
+    });
+    return handleApiResponse(response);
+  },
+
   uploadAvatar: async (file: File): Promise<User> => {
     const formData = new FormData();
     formData.append('avatar', file);
-    
+
     const response = await api.post('/users/avatar', formData, {
       headers: {
-        'Content-Type': 'multipart/form-data',
-      },
+        'Content-Type': 'multipart/form-data'
+      }
     });
-    return handleApiResponse<User>(response);
+    const raw = handleApiResponse<unknown>(response);
+    return normalizeUser(raw);
   },
 
-  // Subir banner (para comerciantes)
   uploadBanner: async (file: File): Promise<User> => {
     const formData = new FormData();
     formData.append('banner', file);
-    
+
     const response = await api.post('/users/banner', formData, {
       headers: {
-        'Content-Type': 'multipart/form-data',
-      },
+        'Content-Type': 'multipart/form-data'
+      }
     });
-    return handleApiResponse<User>(response);
+    const raw = handleApiResponse<unknown>(response);
+    return normalizeUser(raw);
   },
 
-  // Eliminar cuenta
   deleteAccount: async (password: string): Promise<void> => {
     const response = await api.delete('/users/account', {
-      data: { password },
+      data: { password }
     });
     return handleApiResponse<void>(response);
-  },
-}; 
+  }
+};

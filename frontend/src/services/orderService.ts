@@ -5,39 +5,15 @@ export const orderService = {
   // Obtener pedidos del usuario (usando ruta alternativa temporalmente)
   getMyOrders: async (filters?: OrderFilters) => {
     try {
-      console.log('🔄 orderService.getMyOrders - Iniciando solicitud...');
-      console.log('📋 Filtros enviados:', filters);
-      
-      // Intentar la nueva ruta primero
-      console.log('🎯 Intentando ruta: /orders/my-orders');
       const response = await api.get<ApiResponse<PaginatedResponse<Order>>>('/orders/my-orders', {
         params: filters
       });
-      
-      console.log('📡 Respuesta de /orders/my-orders:', response.data);
-      const result = handleApiResponse(response);
-      console.log('✅ Resultado procesado de /orders/my-orders:', result);
-      
-      return result;
-    } catch (error) {
-      console.log('❌ Error en /orders/my-orders:', error);
-      console.log('🔄 Usando ruta fallback para obtener pedidos...');
-      
-      try {
-        console.log('🎯 Intentando ruta fallback: /orders');
-        const response = await api.get<ApiResponse<PaginatedResponse<Order>>>('/orders', {
-          params: filters
-        });
-        
-        console.log('📡 Respuesta de /orders:', response.data);
-        const result = handleApiResponse(response);
-        console.log('✅ Resultado procesado de /orders:', result);
-        
-        return result;
-      } catch (fallbackError) {
-        console.error('❌ Error en ruta fallback /orders:', fallbackError);
-        throw fallbackError;
-      }
+      return handleApiResponse(response);
+    } catch {
+      const response = await api.get<ApiResponse<PaginatedResponse<Order>>>('/orders', {
+        params: filters
+      });
+      return handleApiResponse(response);
     }
   },
 
@@ -54,8 +30,12 @@ export const orderService = {
   },
 
   // Crear nuevo pedido
-  createOrder: async (orderData: OrderForm): Promise<Order> => {
-    const response = await api.post<ApiResponse<Order>>('/orders', orderData);
+  createOrder: async (orderData: OrderForm, opts?: { idempotencyKey?: string }): Promise<Order> => {
+    const headers: Record<string, string> = {};
+    if (opts?.idempotencyKey) {
+      headers['Idempotency-Key'] = opts.idempotencyKey;
+    }
+    const response = await api.post<ApiResponse<Order>>('/orders', orderData, { headers });
     return handleApiResponse(response);
   },
 

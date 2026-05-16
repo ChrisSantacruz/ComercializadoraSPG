@@ -1,376 +1,266 @@
-import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import React, { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useForm, Controller, type Resolver } from 'react-hook-form';
+import { yupResolver } from '@hookform/resolvers/yup';
+import * as yup from 'yup';
+import { EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline';
 import { useAuthStore } from '../../stores/authStore';
+import { AuthLayoutShell } from '../../components/auth/AuthLayoutShell';
 import SocialLoginButtons from '../../components/auth/SocialLoginButtons';
+import { FormField } from '../../components/ui/FormField';
+import { Input } from '../../components/ui/Input';
+import { Select } from '../../components/ui/Select';
+import { Button } from '../../components/ui/Button';
+
+type Rol = 'cliente' | 'comerciante';
+
+const registerSchema = yup.object({
+  nombre: yup
+    .string()
+    .trim()
+    .min(2, 'El nombre debe tener al menos 2 caracteres')
+    .max(100, 'Máximo 100 caracteres')
+    .required('El nombre es requerido'),
+  email: yup.string().trim().email('El email no es válido').required('El email es requerido'),
+  rol: yup.mixed<Rol>().oneOf(['cliente', 'comerciante']).required(),
+  nombreEmpresa: yup.string().when('rol', {
+    is: 'comerciante',
+    then: (schema) =>
+      schema
+        .trim()
+        .min(2, 'El nombre de la empresa debe tener al menos 2 caracteres')
+        .max(100, 'Máximo 100 caracteres')
+        .required('El nombre de la empresa es requerido'),
+    otherwise: (schema) => schema.optional().strip(),
+  }),
+  password: yup
+    .string()
+    .required('La contraseña es requerida')
+    .min(6, 'La contraseña debe tener al menos 6 caracteres'),
+  confirmPassword: yup
+    .string()
+    .required('Confirma tu contraseña')
+    .oneOf([yup.ref('password')], 'Las contraseñas no coinciden'),
+});
+
+type RegisterFormValues = {
+  nombre: string;
+  email: string;
+  rol: Rol;
+  nombreEmpresa?: string;
+  password: string;
+  confirmPassword: string;
+};
+
+function passwordStrengthLabel(password: string): {
+  level: 'weak' | 'moderate' | 'strong';
+  text: string;
+  boxClass: string;
+} {
+  if (!password) {
+    return { level: 'weak', text: '', boxClass: '' };
+  }
+  let strength = 0;
+  if (password.length >= 8) strength++;
+  if (password.length >= 12) strength++;
+  if (/[A-Z]/.test(password)) strength++;
+  if (/[a-z]/.test(password)) strength++;
+  if (/[0-9]/.test(password)) strength++;
+  if (/[^A-Za-z0-9]/.test(password)) strength++;
+
+  if (strength <= 2) {
+    return {
+      level: 'weak',
+      text: 'Débil',
+      boxClass: 'border-error-200 bg-error-50 text-error-800',
+    };
+  }
+  if (strength <= 4) {
+    return {
+      level: 'moderate',
+      text: 'Moderada',
+      boxClass: 'border-warning-200 bg-warning-50 text-warning-900',
+    };
+  }
+  return {
+    level: 'strong',
+    text: 'Fuerte',
+    boxClass: 'border-success-200 bg-success-50 text-success-900',
+  };
+}
 
 const RegisterPage: React.FC = () => {
   const navigate = useNavigate();
-  const { register, isLoading, error } = useAuthStore();
-  
-  const [formData, setFormData] = useState({
-    nombre: '',
-    email: '',
-    password: '',
-    confirmPassword: '',
-    rol: 'cliente' as 'cliente' | 'comerciante',
-    nombreEmpresa: ''
-  });
-
-  const [formErrors, setFormErrors] = useState<string[]>([]);
+  const { register: registerAccount, isLoading, error: storeError, clearError } = useAuthStore();
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
-  // Calcular fortaleza de la contraseña
-  const getPasswordStrength = (password: string): { level: 'weak' | 'moderate' | 'strong', text: string, color: string, bgColor: string } => {
-    if (!password) {
-      return { level: 'weak', text: '', color: '', bgColor: '' };
-    }
+  const {
+    register,
+    handleSubmit,
+    control,
+    watch,
+    setError,
+    formState: { errors, isSubmitting },
+  } = useForm<RegisterFormValues>({
+    resolver: yupResolver(registerSchema) as Resolver<RegisterFormValues>,
+    defaultValues: {
+      nombre: '',
+      email: '',
+      rol: 'cliente',
+      nombreEmpresa: '',
+      password: '',
+      confirmPassword: '',
+    },
+  });
 
-    let strength = 0;
-    
-    // Longitud
-    if (password.length >= 8) strength++;
-    if (password.length >= 12) strength++;
-    
-    // Tiene mayúsculas
-    if (/[A-Z]/.test(password)) strength++;
-    
-    // Tiene minúsculas
-    if (/[a-z]/.test(password)) strength++;
-    
-    // Tiene números
-    if (/[0-9]/.test(password)) strength++;
-    
-    // Tiene caracteres especiales
-    if (/[^A-Za-z0-9]/.test(password)) strength++;
+  const passwordValue = watch('password');
+  const rolValue = watch('rol');
+  const strength = useMemo(() => passwordStrengthLabel(passwordValue || ''), [passwordValue]);
 
-    if (strength <= 2) {
-      return { 
-        level: 'weak', 
-        text: 'Débil', 
-        color: 'text-red-700', 
-        bgColor: 'bg-red-100 border-red-400' 
-      };
-    } else if (strength <= 4) {
-      return { 
-        level: 'moderate', 
-        text: 'Moderada', 
-        color: 'text-yellow-700', 
-        bgColor: 'bg-yellow-100 border-yellow-400' 
-      };
-    } else {
-      return { 
-        level: 'strong', 
-        text: 'Fuerte', 
-        color: 'text-green-700', 
-        bgColor: 'bg-green-100 border-green-400' 
-      };
-    }
-  };
+  useEffect(() => {
+    clearError();
+  }, [clearError]);
 
-  const passwordStrength = getPasswordStrength(formData.password);
-
-  const validateForm = () => {
-    const errors: string[] = [];
-
-    if (!formData.nombre.trim()) {
-      errors.push('El nombre es requerido');
-    }
-
-    if (!formData.email.trim()) {
-      errors.push('El email es requerido');
-    } else if (!/\S+@\S+\.\S+/.test(formData.email)) {
-      errors.push('El email no es válido');
-    }
-
-    if (!formData.password) {
-      errors.push('La contraseña es requerida');
-    } else if (formData.password.length < 6) {
-      errors.push('La contraseña debe tener al menos 6 caracteres');
-    }
-
-    if (formData.password !== formData.confirmPassword) {
-      errors.push('Las contraseñas no coinciden');
-    }
-
-    if (formData.rol === 'comerciante' && !formData.nombreEmpresa.trim()) {
-      errors.push('El nombre de la empresa es requerido para comerciantes');
-    }
-
-    setFormErrors(errors);
-    return errors.length === 0;
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (!validateForm()) {
-      return;
-    }
-
+  const onSubmit = async (values: RegisterFormValues) => {
     try {
-      console.log('Enviando datos de registro:', formData);
-      
-      // Llamar al endpoint de registro (ya no autentica automáticamente)
-      const response = await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:5001'}/api/auth/register`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          nombre: formData.nombre,
-          email: formData.email,
-          password: formData.password,
-          rol: formData.rol,
-          nombreEmpresa: formData.rol === 'comerciante' ? formData.nombreEmpresa : undefined
-        })
+      await registerAccount({
+        nombre: values.nombre.trim(),
+        email: values.email.trim().toLowerCase(),
+        password: values.password,
+        rol: values.rol,
+        nombreEmpresa: values.rol === 'comerciante' ? values.nombreEmpresa?.trim() : undefined,
       });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.mensaje || 'Error al crear la cuenta');
-      }
-
-      // Redirigir a la página de verificación con el email
-      navigate(`/verificar-email?email=${encodeURIComponent(formData.email)}`);
-      
-    } catch (error: any) {
-      console.error('Error en el registro:', error);
-      setFormErrors([error.message || 'Error al crear la cuenta']);
+      navigate(`/verificar-email?email=${encodeURIComponent(values.email.trim().toLowerCase())}`);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'No pudimos crear la cuenta.';
+      setError('root', { type: 'server', message: msg });
     }
   };
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    setFormData({
-      ...formData,
-      [e.target.name]: e.target.value
-    });
-    
-    // Limpiar errores cuando el usuario comience a escribir
-    if (formErrors.length > 0) {
-      setFormErrors([]);
-    }
-  };
+  const rootError = errors.root?.message || storeError;
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full space-y-8">
-        <div>
-          <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
-            Crear Cuenta
-          </h2>
-          <p className="mt-2 text-center text-sm text-gray-600">
-            ¿Ya tienes cuenta?{' '}
-            <Link to="/login" className="font-medium text-blue-600 hover:text-blue-500">
-              Inicia sesión aquí
-            </Link>
-          </p>
+    <AuthLayoutShell
+      title="Crear cuenta"
+      subtitle="Registro para clientes y comerciantes. Los datos se validan en servidor."
+      footerLink={{
+        hint: '¿Ya tienes cuenta?',
+        to: '/login',
+        label: 'Iniciar sesión',
+      }}
+    >
+      {rootError ? (
+        <div className="mb-6 rounded-lg border border-error-200 bg-error-50 px-4 py-3 text-sm text-error-800" role="alert">
+          {rootError}
         </div>
+      ) : null}
 
-        {/* Mostrar errores */}
-        {(formErrors.length > 0 || error) && (
-          <div className="rounded-md bg-red-50 p-4">
-            <div className="flex">
-              <div className="ml-3">
-                <h3 className="text-sm font-medium text-red-800">
-                  Error en el registro
-                </h3>
-                <div className="mt-2 text-sm text-red-700">
-                  <ul className="list-disc space-y-1 pl-5">
-                    {formErrors.map((error, index) => (
-                      <li key={index}>{error}</li>
-                    ))}
-                    {error && <li>{error}</li>}
-                  </ul>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
+      <form className="space-y-5" onSubmit={handleSubmit(onSubmit)} noValidate>
+        <FormField id="nombre" label="Nombre completo" required error={errors.nombre?.message}>
+          <Input autoComplete="name" disabled={isSubmitting || isLoading} {...register('nombre')} />
+        </FormField>
 
-        <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
-          <div className="space-y-4">
-            <div>
-              <label htmlFor="nombre" className="block text-sm font-medium text-gray-700">
-                Nombre completo
-              </label>
-              <input
-                id="nombre"
-                name="nombre"
-                type="text"
-                required
-                className="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                placeholder="Tu nombre completo"
-                value={formData.nombre}
-                onChange={handleChange}
-                disabled={isLoading}
-              />
-            </div>
+        <FormField id="email" label="Correo electrónico" required error={errors.email?.message}>
+          <Input type="email" autoComplete="email" disabled={isSubmitting || isLoading} {...register('email')} />
+        </FormField>
 
-            <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700">
-                Email
-              </label>
-              <input
-                id="email"
-                name="email"
-                type="email"
-                autoComplete="email"
-                required
-                className="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                placeholder="tu@email.com"
-                value={formData.email}
-                onChange={handleChange}
-                disabled={isLoading}
-              />
-            </div>
-
-            <div>
-              <label htmlFor="rol" className="block text-sm font-medium text-gray-700">
-                Tipo de cuenta
-              </label>
-              <select
-                id="rol"
-                name="rol"
-                className="mt-1 block w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                value={formData.rol}
-                onChange={handleChange}
-                disabled={isLoading}
-              >
+        <FormField id="rol" label="Tipo de cuenta" required error={errors.rol?.message}>
+          <Controller
+            name="rol"
+            control={control}
+            render={({ field }) => (
+              <Select {...field} disabled={isSubmitting || isLoading}>
                 <option value="cliente">Cliente</option>
                 <option value="comerciante">Comerciante</option>
-              </select>
-            </div>
-
-            {formData.rol === 'comerciante' && (
-              <div>
-                <label htmlFor="nombreEmpresa" className="block text-sm font-medium text-gray-700">
-                  Nombre de la empresa *
-                </label>
-                <input
-                  id="nombreEmpresa"
-                  name="nombreEmpresa"
-                  type="text"
-                  required={formData.rol === 'comerciante'}
-                  className="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                  placeholder="Nombre de tu empresa o negocio"
-                  value={formData.nombreEmpresa}
-                  onChange={handleChange}
-                  disabled={isLoading}
-                />
-              </div>
+              </Select>
             )}
+          />
+        </FormField>
 
-            <div>
-              <label htmlFor="password" className="block text-sm font-medium text-gray-700">
-                Contraseña
-              </label>
-              <div className="relative mt-1">
-                <input
-                  id="password"
-                  name="password"
-                  type={showPassword ? "text" : "password"}
-                  autoComplete="new-password"
-                  required
-                  className="appearance-none relative block w-full px-3 py-2 pr-10 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                  placeholder="Contraseña (mínimo 6 caracteres)"
-                  value={formData.password}
-                  onChange={handleChange}
-                  disabled={isLoading}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-500 hover:text-gray-700 focus:outline-none"
-                  tabIndex={-1}
-                >
-                  {showPassword ? '🙈' : '👁️'}
-                </button>
-              </div>
-              
-              {/* Indicador de fortaleza de contraseña */}
-              {formData.password && (
-                <div className={`mt-2 p-2 rounded border ${passwordStrength.bgColor}`}>
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-medium text-gray-700">Fortaleza:</span>
-                    <span className={`text-xs font-semibold ${passwordStrength.color}`}>
-                      {passwordStrength.text}
-                    </span>
-                  </div>
-                  <div className="mt-1 text-xs text-gray-600">
-                    {passwordStrength.level === 'weak' && (
-                      <span>Usa mayúsculas, números y símbolos para mayor seguridad</span>
-                    )}
-                    {passwordStrength.level === 'moderate' && (
-                      <span>Buena contraseña. Considera agregar más caracteres.</span>
-                    )}
-                    {passwordStrength.level === 'strong' && (
-                      <span>¡Excelente! Tu contraseña es muy segura.</span>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
+        {rolValue === 'comerciante' ? (
+          <FormField
+            id="nombreEmpresa"
+            label="Nombre de la empresa"
+            required
+            error={errors.nombreEmpresa?.message}
+          >
+            <Input disabled={isSubmitting || isLoading} {...register('nombreEmpresa')} />
+          </FormField>
+        ) : null}
 
-            <div>
-              <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700">
-                Confirmar contraseña
-              </label>
-              <div className="relative mt-1">
-                <input
-                  id="confirmPassword"
-                  name="confirmPassword"
-                  type={showConfirmPassword ? "text" : "password"}
-                  required
-                  className="appearance-none relative block w-full px-3 py-2 pr-10 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                  placeholder="Confirma tu contraseña"
-                  value={formData.confirmPassword}
-                  onChange={handleChange}
-                  disabled={isLoading}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-500 hover:text-gray-700 focus:outline-none"
-                  tabIndex={-1}
-                >
-                  {showConfirmPassword ? '🙈' : '👁️'}
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <div>
+        <FormField id="password" label="Contraseña" required error={errors.password?.message}>
+          <div className="relative">
+            <Input
+              type={showPassword ? 'text' : 'password'}
+              autoComplete="new-password"
+              disabled={isSubmitting || isLoading}
+              className="pr-11"
+              {...register('password')}
+            />
             <button
-              type="submit"
-              disabled={isLoading}
-              className={`group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 ${
-                isLoading 
-                  ? 'bg-gray-400 cursor-not-allowed' 
-                  : 'bg-blue-600 hover:bg-blue-700'
-              }`}
+              type="button"
+              onClick={() => setShowPassword((p) => !p)}
+              className="absolute inset-y-0 right-0 flex items-center rounded-r-lg px-3 text-gray-500 transition-colors hover:text-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/40"
+              aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
             >
-              {isLoading ? (
-                <>
-                  <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                  Creando cuenta...
-                </>
-              ) : (
-                'Crear Cuenta'
-              )}
+              {showPassword ? <EyeSlashIcon className="h-5 w-5" /> : <EyeIcon className="h-5 w-5" />}
             </button>
           </div>
-        </form>
+          {passwordValue ? (
+            <div className={`mt-2 rounded-lg border px-3 py-2 text-xs ${strength.boxClass}`}>
+              <span className="font-medium">Fortaleza: </span>
+              {strength.text}
+              {strength.level === 'weak' ? (
+                <span className="block pt-1 text-gray-700">
+                  Añade mayúsculas, números y símbolos para reforzar la clave.
+                </span>
+              ) : null}
+            </div>
+          ) : null}
+        </FormField>
 
-        {/* Botones de autenticación social */}
-        <SocialLoginButtons isLoading={isLoading} />
+        <FormField
+          id="confirmPassword"
+          label="Confirmar contraseña"
+          required
+          error={errors.confirmPassword?.message}
+        >
+          <div className="relative">
+            <Input
+              type={showConfirmPassword ? 'text' : 'password'}
+              autoComplete="new-password"
+              disabled={isSubmitting || isLoading}
+              className="pr-11"
+              {...register('confirmPassword')}
+            />
+            <button
+              type="button"
+              onClick={() => setShowConfirmPassword((p) => !p)}
+              className="absolute inset-y-0 right-0 flex items-center rounded-r-lg px-3 text-gray-500 transition-colors hover:text-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/40"
+              aria-label={showConfirmPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+            >
+              {showConfirmPassword ? <EyeSlashIcon className="h-5 w-5" /> : <EyeIcon className="h-5 w-5" />}
+            </button>
+          </div>
+        </FormField>
+
+        <Button
+          type="submit"
+          variant="secondary"
+          size="lg"
+          className="w-full"
+          loading={isSubmitting || isLoading}
+        >
+          Crear cuenta
+        </Button>
+      </form>
+
+      <div className="mt-8">
+        <SocialLoginButtons isLoading={isSubmitting || isLoading} />
       </div>
-    </div>
+    </AuthLayoutShell>
   );
 };
 
-export default RegisterPage; 
+export default RegisterPage;

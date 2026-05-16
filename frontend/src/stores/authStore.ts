@@ -1,17 +1,20 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import { User, AuthResponse } from '../types';
+import { User } from '../types';
 import { authService } from '../services/authService';
+import { normalizeUser } from '../auth/normalizeUser';
+
+export type AuthBootstrapPhase = 'pending' | 'restoring' | 'ready';
 
 interface AuthState {
-  // Estado
   user: User | null;
   token: string | null;
+  refreshToken: string | null;
   isAuthenticated: boolean;
+  bootstrapPhase: AuthBootstrapPhase;
   isLoading: boolean;
   error: string | null;
 
-  // Acciones
   login: (email: string, password: string) => Promise<void>;
   register: (userData: {
     nombre: string;
@@ -24,146 +27,147 @@ interface AuthState {
   logout: () => Promise<void>;
   clearError: () => void;
   updateUser: (userData: Partial<User>) => void;
+  bootstrapSession: () => Promise<void>;
+  /** @deprecated usar bootstrapSession */
   checkAuth: () => Promise<void>;
-  setUser: (user: User | null) => void;
-  setToken: (token: string | null) => void;
+  setSession: (payload: { user: User; token: string; refreshToken: string | null }) => void;
+  applyTokenPair: (token: string, refreshToken: string) => void;
+  clearLocalSession: () => void;
 }
+
+const emptySession = {
+  user: null,
+  token: null,
+  refreshToken: null,
+  isAuthenticated: false,
+  isLoading: false,
+  error: null
+};
 
 export const useAuthStore = create<AuthState>()(
   persist(
     (set, get) => ({
-      // Estado inicial
       user: null,
       token: null,
+      refreshToken: null,
       isAuthenticated: false,
+      bootstrapPhase: 'pending',
       isLoading: false,
       error: null,
 
-      // Login
       login: async (email: string, password: string) => {
         set({ isLoading: true, error: null });
-        
         try {
           const response = await authService.login({ email, password });
-          
           set({
-            user: response.usuario,
+            user: normalizeUser(response.usuario),
             token: response.token,
+            refreshToken: response.refreshToken ?? null,
             isAuthenticated: true,
             isLoading: false,
             error: null,
+            bootstrapPhase: 'ready'
           });
-        } catch (error: any) {
+        } catch (error: unknown) {
+          const msg = error instanceof Error ? error.message : 'Error al iniciar sesión';
           set({
-            user: null,
-            token: null,
-            isAuthenticated: false,
+            ...emptySession,
             isLoading: false,
-            error: error.message || 'Error al iniciar sesión',
+            error: msg,
+            bootstrapPhase: 'ready'
           });
           throw error;
         }
       },
 
-      // Registro
       register: async (userData) => {
         set({ isLoading: true, error: null });
-        
         try {
-          const response = await authService.register(userData);
-          
-          set({
-            user: response.usuario,
-            token: response.token,
-            isAuthenticated: true,
-            isLoading: false,
-            error: null,
-          });
-        } catch (error: any) {
-          set({
-            user: null,
-            token: null,
-            isAuthenticated: false,
-            isLoading: false,
-            error: error.message || 'Error al registrarse',
-          });
+          await authService.registerAccount(userData);
+          set({ isLoading: false, error: null });
+        } catch (error: unknown) {
+          const msg = error instanceof Error ? error.message : 'Error al registrarse';
+          set({ isLoading: false, error: msg });
           throw error;
         }
       },
 
-      // Logout
       logout: async () => {
         try {
-          await authService.logout();
-        } catch (error) {
-          // Continuar con logout local aunque falle el servidor
-          console.warn('Error al hacer logout en servidor:', error);
+          if (get().token) {
+            await authService.logout();
+          }
+        } catch {
+          // La sesión local debe limpiarse aunque falle el cierre en servidor (red caída, 5xx).
         }
-        
         set({
-          user: null,
-          token: null,
-          isAuthenticated: false,
-          isLoading: false,
-          error: null,
+          ...emptySession,
+          bootstrapPhase: 'ready'
         });
       },
 
-      // Limpiar error
-      clearError: () => {
-        set({ error: null });
-      },
+      clearError: () => set({ error: null }),
 
-      // Actualizar usuario
       updateUser: (userData: Partial<User>) => {
         const { user } = get();
         if (user) {
-          set({
-            user: { ...user, ...userData },
-          });
+          set({ user: { ...user, ...userData } });
         }
       },
 
-      // Verificar autenticación
-      checkAuth: async () => {
-        const { token } = get();
-        
+      bootstrapSession: async () => {
+        const { token, bootstrapPhase } = get();
+        if (bootstrapPhase === 'restoring') return;
         if (!token) {
-          set({ isAuthenticated: false, user: null });
+          set({
+            bootstrapPhase: 'ready',
+            isAuthenticated: false,
+            user: null,
+            refreshToken: null
+          });
           return;
         }
 
-        set({ isLoading: true });
-        
+        set({ bootstrapPhase: 'restoring' });
         try {
           const user = await authService.getProfile();
           set({
-            user,
+            user: normalizeUser(user),
             isAuthenticated: true,
-            isLoading: false,
-            error: null,
+            bootstrapPhase: 'ready',
+            error: null
           });
-        } catch (error) {
+        } catch {
+          // Token inválido o error de red: no forzar navegación global (DEC-ERR-003); limpiar persistencia local.
           set({
-            user: null,
-            token: null,
-            isAuthenticated: false,
-            isLoading: false,
-            error: null,
+            ...emptySession,
+            bootstrapPhase: 'ready'
           });
         }
       },
 
-      // Establecer usuario (para OAuth)
-      setUser: (user: User | null) => {
-        set({ user, isAuthenticated: !!user });
+      checkAuth: async () => {
+        await get().bootstrapSession();
       },
 
-      // Establecer token (para OAuth)
-      setToken: (token: string | null) => {
-        set({ token });
+      setSession: ({ user, token, refreshToken }) => {
+        set({
+          user: normalizeUser(user),
+          token,
+          refreshToken,
+          isAuthenticated: true,
+          bootstrapPhase: 'ready',
+          error: null
+        });
       },
 
+      applyTokenPair: (token: string, refreshToken: string) => {
+        set({ token, refreshToken, isAuthenticated: true, bootstrapPhase: 'ready' });
+      },
+
+      clearLocalSession: () => {
+        set({ ...emptySession, bootstrapPhase: 'ready' });
+      }
     }),
     {
       name: 'auth-storage',
@@ -171,8 +175,9 @@ export const useAuthStore = create<AuthState>()(
       partialize: (state) => ({
         user: state.user,
         token: state.token,
-        isAuthenticated: state.isAuthenticated,
-      }),
+        refreshToken: state.refreshToken,
+        isAuthenticated: state.isAuthenticated
+      })
     }
   )
-); 
+);

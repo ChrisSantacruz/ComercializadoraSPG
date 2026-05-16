@@ -1,121 +1,135 @@
-import axios, { AxiosResponse, AxiosError } from 'axios';
+import axios, { AxiosResponse, AxiosError, InternalAxiosRequestConfig } from 'axios';
 import { ApiResponse } from '../types';
-
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5001';
+import { API_BASE } from '../config/env';
+import { getAccessTokenFromStorage, getRefreshTokenFromStorage } from '../auth/tokenBridge';
+import { emitAuthSessionLost } from '../auth/authEvents';
+import { AuthHttpError, parseApiError } from './authErrors';
 
 const api = axios.create({
-  baseURL: `${API_BASE_URL}/api`,
-  timeout: 30000, // 30 segundos para operaciones lentas
+  baseURL: API_BASE,
+  timeout: 30000
 });
 
-// Interceptor para agregar token de autenticación
+let isRefreshing = false;
+let queue: Array<{ resolve: (t: string) => void; reject: (e: unknown) => void }> = [];
+
+const processQueue = (err: unknown, token: string | null = null) => {
+  queue.forEach((p) => {
+    if (err) p.reject(err);
+    else if (token) p.resolve(token);
+    else p.reject(new Error('No token'));
+  });
+  queue = [];
+};
+
+function shouldSkipAuthRetry(config?: InternalAxiosRequestConfig) {
+  const url = config?.url || '';
+  return (
+    url.includes('/auth/login') ||
+    url.includes('/auth/register') ||
+    url.includes('/auth/refresh') ||
+    url.includes('/auth/oauth/exchange') ||
+    url.includes('/auth/firebase-login') ||
+    url.includes('/auth/verificar-codigo') ||
+    url.includes('/auth/seleccionar-rol')
+  );
+}
+
 api.interceptors.request.use(
   (config) => {
-    console.log(`🌐 API Request: ${config.method?.toUpperCase()} ${config.url}`, {
-      params: config.params,
-      data: config.data
-    });
-    
-    const token = localStorage.getItem('auth-storage');
+    const token = getAccessTokenFromStorage();
     if (token) {
-      try {
-        const authData = JSON.parse(token);
-        if (authData.state?.token) {
-          config.headers.Authorization = `Bearer ${authData.state.token}`;
-        }
-      } catch (error) {
-        console.error('Error parsing auth token:', error);
-      }
+      config.headers.Authorization = `Bearer ${token}`;
     }
     return config;
   },
-  (error) => {
-    console.error('❌ Request Error:', error);
-    return Promise.reject(error);
-  }
+  (error) => Promise.reject(error)
 );
 
-// Interceptor para manejar respuestas
 api.interceptors.response.use(
-  (response: AxiosResponse<ApiResponse>) => {
-    console.log(`✅ API Response: ${response.config.method?.toUpperCase()} ${response.config.url}`, {
-      status: response.status,
-      data: response.data
-    });
-    return response;
-  },
-  (error: AxiosError) => {
-    console.error(`❌ API Error: ${error.config?.method?.toUpperCase()} ${error.config?.url}`, {
-      status: error.response?.status,
-      data: error.response?.data,
-      message: error.message
-    });
+  (response: AxiosResponse<ApiResponse>) => response,
+  async (error: AxiosError<ApiResponse & { codigo?: string }>) => {
+    const original = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
+    const status = error.response?.status;
+    const codigo = error.response?.data?.codigo;
 
-    if (error.response?.status === 401) {
-      // Token expirado o inválido
-      localStorage.removeItem('auth-storage');
-      localStorage.removeItem('user');
-      window.location.href = '/login';
+    if (status === 401 && original && !original._retry && !shouldSkipAuthRetry(original)) {
+      const isExpired =
+        codigo === 'TOKEN_EXPIRED' || error.response?.data?.mensaje === 'Token expirado.';
+
+      if (isExpired) {
+        if (isRefreshing) {
+          return new Promise((resolve, reject) => {
+            queue.push({
+              resolve: (token: string) => {
+                original.headers.Authorization = `Bearer ${token}`;
+                resolve(api(original));
+              },
+              reject
+            });
+          });
+        }
+
+        original._retry = true;
+        isRefreshing = true;
+
+        const refresh = getRefreshTokenFromStorage();
+        if (!refresh) {
+          isRefreshing = false;
+          emitAuthSessionLost({ reason: 'no_refresh' });
+          return Promise.reject(parseApiError(error));
+        }
+
+        try {
+          const { data } = await axios.post<ApiResponse<{ token: string; refreshToken: string }>>(
+            `${API_BASE}/auth/refresh`,
+            { refreshToken: refresh },
+            { headers: { 'Content-Type': 'application/json' } }
+          );
+
+          if (!data.exito || !data.datos?.token) {
+            throw new Error(data.mensaje || 'Refresh fallido');
+          }
+
+          const { useAuthStore } = await import('../stores/authStore');
+          useAuthStore.getState().applyTokenPair(data.datos.token, data.datos.refreshToken);
+
+          processQueue(null, data.datos.token);
+          original.headers.Authorization = `Bearer ${data.datos.token}`;
+          return api(original);
+        } catch (refreshErr) {
+          processQueue(refreshErr, null);
+          emitAuthSessionLost({ reason: 'refresh_failed' });
+          return Promise.reject(parseApiError(refreshErr));
+        } finally {
+          isRefreshing = false;
+        }
+      }
+
+      emitAuthSessionLost({ reason: 'unauthorized' });
     }
 
-    // Formatear error para mostrar al usuario
-    const errorData = error.response?.data as any;
-    let errorMessage = 'Ha ocurrido un error';
-
-    // Manejar diferentes tipos de errores con mensajes amigables
-    if (error.code === 'ECONNABORTED' || error.message?.includes('timeout')) {
-      errorMessage = 'La solicitud está tomando más tiempo de lo esperado. Por favor, intenta nuevamente.';
-    } else if (error.code === 'ERR_NETWORK' || !error.response) {
-      errorMessage = 'No se pudo conectar al servidor. Verifica tu conexión a internet.';
-    } else if (error.response?.status === 400) {
-      errorMessage = errorData?.mensaje || 'Los datos enviados no son válidos';
-    } else if (error.response?.status === 404) {
-      errorMessage = errorData?.mensaje || 'El recurso solicitado no fue encontrado';
-    } else if (error.response?.status === 500) {
-      errorMessage = 'Error del servidor. Nuestro equipo está trabajando en resolverlo.';
-    } else {
-      errorMessage = errorData?.mensaje || errorData?.message || error.message || 'Error de conexión';
-    }
-    
-    // Si hay errores de validación específicos, incluirlos
-    if (errorData?.errores && Array.isArray(errorData.errores)) {
-      const mensajesError = errorData.errores.map((err: any) => 
-        err.mensaje || err.msg || err.message || JSON.stringify(err)
-      );
-      errorMessage = mensajesError.join(', ');
-    }
-
-    return Promise.reject(new Error(errorMessage));
+    return Promise.reject(parseApiError(error));
   }
 );
 
-// Helper para manejar respuestas de la API
 export const handleApiResponse = <T>(response: AxiosResponse<ApiResponse<T>>): T => {
   const data = response.data;
-  
-  console.log('🔧 handleApiResponse - datos recibidos:', data);
-  console.log('🔧 Es array?:', Array.isArray(data));
-  console.log('🔧 Tiene exito?:', data && typeof data === 'object' && 'exito' in data);
-  
-  // Si la respuesta es un array directamente (para compatibilidad)
+
   if (Array.isArray(data)) {
-    console.log('🔧 Devolviendo array directo');
     return data as T;
   }
-  
-  // Si la respuesta tiene formato { exito, datos }
+
   if (data && typeof data === 'object' && 'exito' in data) {
     if (data.exito) {
-      console.log('🔧 Devolviendo data.datos');
       return data.datos as T;
-    } else {
-      throw new Error(data.mensaje || 'Error en la API');
     }
+    throw new AuthHttpError(data.mensaje || 'Error en la API', response.status, 'UNKNOWN');
   }
-  
-  // Para respuestas directas
-  console.log('🔧 Devolviendo data directo');
+
   return data as T;
 };
 
-export default api; 
+export { AuthHttpError } from './authErrors';
+
+export default api;

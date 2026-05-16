@@ -1,15 +1,20 @@
+const crypto = require('crypto');
 const User = require('../models/User');
+const OAuthHandoff = require('../models/OAuthHandoff');
 const { successResponse, errorResponse } = require('../utils/helpers');
-const { 
-  generarTokenAcceso, 
-  generarTokenVerificacion, 
+const {
+  generarTokenAcceso,
+  generarTokenActualizacion,
+  generarTokenSeleccionRol,
+  generarTokenVerificacion,
   generarTokenRecuperacion,
   establecerTokenEnCookie,
   limpiarTokenDeCookie,
-  verificarToken
+  verificarToken,
+  verificarTokenSeleccionRol,
+  verificarRefreshToken
 } = require('../utils/jwt');
 const { enviarEmailBienvenida, enviarEmailRecuperacion } = require('../utils/email');
-const passport = require('passport');
 const { auth } = require('../config/firebaseAdmin');
 
 // @desc    Registrar nuevo usuario
@@ -107,8 +112,13 @@ const iniciarSesion = async (req, res, next) => {
       return errorResponse(res, 'Tu cuenta está inactiva. Verifica tu email para activarla.', 403);
     }
 
+    if (!usuario.verificado) {
+      return errorResponse(res, 'Debes verificar tu correo antes de iniciar sesión.', 403);
+    }
+
     // Generar token de acceso
     const token = generarTokenAcceso(usuario._id, usuario.rol);
+    const refreshToken = generarTokenActualizacion(usuario._id);
 
     // Establecer cookie
     establecerTokenEnCookie(res, token);
@@ -126,7 +136,8 @@ const iniciarSesion = async (req, res, next) => {
         avatar: usuario.avatar,
         configuracion: usuario.configuracion
       },
-      token
+      token,
+      refreshToken
     });
 
   } catch (error) {
@@ -157,9 +168,7 @@ const obtenerPerfilActual = async (req, res, next) => {
     const usuario = await User.findById(req.usuario._id);
 
     if (!usuario) {
-      return res.status(404).json(
-        errorResponse(res, 'Usuario no encontrado', 400)
-      );
+      return errorResponse(res, 'Usuario no encontrado', 404);
     }
 
     successResponse(res, 'Perfil obtenido exitosamente', {
@@ -200,17 +209,17 @@ const verificarEmailConCodigo = async (req, res, next) => {
     const usuario = await User.findOne({ email });
 
     if (!usuario) {
-      return errorResponse(res, 'Usuario no encontrado', 404);
+      return errorResponse(res, 'Código de verificación incorrecto o expirado', 400);
     }
 
     // Verificar que el código coincida
     if (usuario.codigoVerificacion !== codigo) {
-      return errorResponse(res, 'Código de verificación incorrecto', 400);
+      return errorResponse(res, 'Código de verificación incorrecto o expirado', 400);
     }
 
     // Verificar que el código no haya expirado
     if (new Date() > usuario.codigoExpiracion) {
-      return errorResponse(res, 'El código de verificación ha expirado. Solicita uno nuevo.', 400);
+      return errorResponse(res, 'Código de verificación incorrecto o expirado', 400);
     }
 
     // Activar usuario
@@ -224,6 +233,7 @@ const verificarEmailConCodigo = async (req, res, next) => {
 
     // Generar token de acceso
     const token = generarTokenAcceso(usuario._id, usuario.rol);
+    const refreshToken = generarTokenActualizacion(usuario._id);
 
     successResponse(res, 'Email verificado exitosamente. Tu cuenta ha sido activada.', {
       usuario: {
@@ -233,7 +243,8 @@ const verificarEmailConCodigo = async (req, res, next) => {
         rol: usuario.rol,
         verificado: usuario.verificado
       },
-      token
+      token,
+      refreshToken
     });
 
   } catch (error) {
@@ -259,8 +270,7 @@ const reenviarCodigoVerificacion = async (req, res, next) => {
     const usuario = await User.findOne({ email });
 
     if (!usuario) {
-      console.log('❌ Usuario no encontrado para email:', email);
-      return errorResponse(res, 'Usuario no encontrado', 404);
+      return successResponse(res, 'Si el correo está registrado y pendiente de verificación, recibirás un código.');
     }
 
     console.log('✅ Usuario encontrado:', usuario.nombre, 'verificado:', usuario.verificado);
@@ -407,9 +417,7 @@ const solicitarRecuperacionPassword = async (req, res, next) => {
       await enviarEmailRecuperacion(email, usuario.nombre, tokenRecuperacion);
     } catch (emailError) {
       console.error('Error enviando email de recuperación:', emailError);
-      return res.status(500).json(
-        errorResponse(res, 'Error enviando email de recuperación', 400)
-      );
+      return successResponse(res, 'Si el email existe, recibirás un enlace de recuperación.');
     }
 
     successResponse(res, 'Si el email existe, recibirás un enlace de recuperación.');
@@ -420,59 +428,44 @@ const solicitarRecuperacionPassword = async (req, res, next) => {
 };
 
 // @desc    Restablecer contraseña
-// @route   POST /api/auth/restablecer-password
+// @route   PUT /api/auth/reset-password/:token
 // @access  Public
 const restablecerPassword = async (req, res, next) => {
   try {
-    const { token, nuevaPassword } = req.body;
+    const token = req.params.token || req.body.token;
+    const nuevaPassword = req.body.nuevaPassword ?? req.body.newPassword;
 
     if (!token || !nuevaPassword) {
-      return res.status(400).json(
-        errorResponse(res, 'Token y nueva contraseña son requeridos', 400)
-      );
+      return errorResponse(res, 'Token y nueva contraseña son requeridos', 400);
     }
 
-    // Verificar token
     let decoded;
     try {
       decoded = verificarToken(token);
     } catch (error) {
-      return res.status(400).json(
-        errorResponse(res, 'Token inválido o expirado', 400)
-      );
+      return errorResponse(res, 'Token inválido o expirado', 400);
     }
 
-    // Verificar que sea token de recuperación
     if (decoded.tipo !== 'recuperacion') {
-      return res.status(400).json(
-        errorResponse(res, 'Tipo de token inválido', 400)
-      );
+      return errorResponse(res, 'Tipo de token inválido', 400);
     }
 
-    // Buscar usuario
     const usuario = await User.findById(decoded.id);
 
     if (!usuario) {
-      return res.status(404).json(
-        errorResponse(res, 'Usuario no encontrado', 400)
-      );
+      return errorResponse(res, 'Usuario no encontrado', 404);
     }
 
-    // Verificar que el token coincida
     if (usuario.tokenRecuperacion !== token) {
-      return res.status(400).json(
-        errorResponse(res, 'Token inválido', 400)
-      );
+      return errorResponse(res, 'Token inválido', 400);
     }
 
-    // Actualizar contraseña
     usuario.password = nuevaPassword;
     usuario.tokenRecuperacion = undefined;
     usuario.fechaRecuperacion = undefined;
     await usuario.save();
 
     successResponse(res, 'Contraseña restablecida exitosamente. Ya puedes iniciar sesión.');
-
   } catch (error) {
     next(error);
   }
@@ -483,32 +476,25 @@ const restablecerPassword = async (req, res, next) => {
 // @access  Private
 const cambiarPassword = async (req, res, next) => {
   try {
-    const { passwordActual, nuevaPassword } = req.body;
+    const passwordActual = req.body.passwordActual ?? req.body.currentPassword;
+    const nuevaPassword = req.body.nuevaPassword ?? req.body.newPassword;
 
     if (!passwordActual || !nuevaPassword) {
-      return res.status(400).json(
-        errorResponse(res, 'Contraseña actual y nueva contraseña son requeridas', 400)
-      );
+      return errorResponse(res, 'Contraseña actual y nueva contraseña son requeridas', 400);
     }
 
-    // Buscar usuario con contraseña
     const usuario = await User.findById(req.usuario._id).select('+password');
 
-    // Verificar contraseña actual
     const passwordValida = await usuario.compararPassword(passwordActual);
 
     if (!passwordValida) {
-      return res.status(400).json(
-        errorResponse(res, 'Contraseña actual incorrecta', 400)
-      );
+      return errorResponse(res, 'Contraseña actual incorrecta', 400);
     }
 
-    // Actualizar contraseña
     usuario.password = nuevaPassword;
     await usuario.save();
 
     successResponse(res, 'Contraseña cambiada exitosamente');
-
   } catch (error) {
     next(error);
   }
@@ -567,26 +553,25 @@ const reenviarVerificacion = async (req, res, next) => {
 const googleCallback = async (req, res, next) => {
   try {
     const user = req.user;
-    
-    // Generar token de acceso
-    const token = generarTokenAcceso(user._id, user.rol);
 
-    // Establecer cookie
+    const token = generarTokenAcceso(user._id, user.rol);
+    const refreshToken = generarTokenActualizacion(user._id);
+
     establecerTokenEnCookie(res, token);
 
-    // Actualizar fecha de último login
     user.fechaUltimoLogin = new Date();
     await user.save();
 
-    // Redirigir al frontend con token
     const frontendURL = process.env.FRONTEND_URL || 'http://localhost:3000';
-    res.redirect(`${frontendURL}/auth/callback?token=${token}&user=${encodeURIComponent(JSON.stringify({
-      id: user._id,
-      nombre: user.nombre,
-      email: user.email,
-      rol: user.rol,
-      avatar: user.fotoPerfilSocial || user.avatar
-    }))}`);
+    const code = crypto.randomBytes(32).toString('hex');
+    await OAuthHandoff.create({
+      code,
+      accessToken: token,
+      refreshToken,
+      expiresAt: new Date(Date.now() + 3 * 60 * 1000)
+    });
+
+    res.redirect(`${frontendURL}/auth/callback?code=${encodeURIComponent(code)}`);
 
   } catch (error) {
     console.error('Error en callback de Google:', error);
@@ -601,26 +586,25 @@ const googleCallback = async (req, res, next) => {
 const facebookCallback = async (req, res, next) => {
   try {
     const user = req.user;
-    
-    // Generar token de acceso
-    const token = generarTokenAcceso(user._id, user.rol);
 
-    // Establecer cookie
+    const token = generarTokenAcceso(user._id, user.rol);
+    const refreshToken = generarTokenActualizacion(user._id);
+
     establecerTokenEnCookie(res, token);
 
-    // Actualizar fecha de último login
     user.fechaUltimoLogin = new Date();
     await user.save();
 
-    // Redirigir al frontend con token
     const frontendURL = process.env.FRONTEND_URL || 'http://localhost:3000';
-    res.redirect(`${frontendURL}/auth/callback?token=${token}&user=${encodeURIComponent(JSON.stringify({
-      id: user._id,
-      nombre: user.nombre,
-      email: user.email,
-      rol: user.rol,
-      avatar: user.fotoPerfilSocial || user.avatar
-    }))}`);
+    const code = crypto.randomBytes(32).toString('hex');
+    await OAuthHandoff.create({
+      code,
+      accessToken: token,
+      refreshToken,
+      expiresAt: new Date(Date.now() + 3 * 60 * 1000)
+    });
+
+    res.redirect(`${frontendURL}/auth/callback?code=${encodeURIComponent(code)}`);
 
   } catch (error) {
     console.error('Error en callback de Facebook:', error);
@@ -648,12 +632,17 @@ const firebaseLogin = async (req, res, next) => {
       return errorResponse(res, 'Token de Firebase requerido', 400);
     }
 
-    // Verificar el token de Firebase
+    if (!provider || provider !== 'google') {
+      return errorResponse(res, 'Inicio social no disponible con este proveedor. Usa Google.', 400);
+    }
+
     let decodedToken;
     try {
       if (!auth) {
-        // Firebase not available - use mock verification for development
-        console.warn('⚠️ Firebase not available - using mock token verification');
+        if (process.env.NODE_ENV === 'production') {
+          return errorResponse(res, 'Autenticación con proveedor no disponible', 503);
+        }
+        console.warn('⚠️ Firebase not available - mock verification (solo desarrollo)');
         decodedToken = {
           uid: `mock_${provider}_${Date.now()}`,
           email: email || `mock@${provider}.com`,
@@ -670,16 +659,11 @@ const firebaseLogin = async (req, res, next) => {
     const firebaseUid = decodedToken.uid;
     const firebaseEmail = decodedToken.email || email;
 
-    // Buscar usuario existente por email o por proveedorId
     let usuario = await User.findOne({
-      $or: [
-        { email: firebaseEmail },
-        { proveedorId: firebaseUid, proveedor: provider }
-      ]
+      $or: [{ email: firebaseEmail }, { proveedorId: firebaseUid, proveedor: provider }]
     });
 
     if (usuario) {
-      // Usuario existente - actualizar información si es necesario
       if (!usuario.proveedorId) {
         usuario.proveedorId = firebaseUid;
         usuario.proveedor = provider;
@@ -687,10 +671,9 @@ const firebaseLogin = async (req, res, next) => {
       if (photoURL && !usuario.avatar) {
         usuario.avatar = photoURL;
       }
-      usuario.verificado = true; // Los usuarios de OAuth ya están verificados
+      usuario.verificado = true;
       await usuario.save();
     } else {
-      // Crear nuevo usuario SIN ROL (lo seleccionará después)
       usuario = new User({
         nombre: nombre || decodedToken.name || 'Usuario',
         email: firebaseEmail,
@@ -698,34 +681,38 @@ const firebaseLogin = async (req, res, next) => {
         proveedorId: firebaseUid,
         avatar: photoURL || decodedToken.picture,
         verificado: true,
-        rol: null, // Sin rol asignado inicialmente
-        // No se establece password para usuarios OAuth
+        rol: null
       });
       await usuario.save();
     }
 
-    // Si el usuario NO tiene rol, devolver usuario sin token para que seleccione rol
     if (!usuario.rol) {
-      return successResponse(res, 'Usuario registrado, debe seleccionar rol', {
-        requiereSeleccionRol: true,
-        usuario: {
-          _id: usuario._id,
-          nombre: usuario.nombre,
-          email: usuario.email,
-          avatar: usuario.avatar,
-          proveedor: usuario.proveedor
-        }
-      }, 200);
+      const pendingToken = generarTokenSeleccionRol(usuario._id);
+      return successResponse(
+        res,
+        'Usuario registrado, debe seleccionar rol',
+        {
+          requiereSeleccionRol: true,
+          pendingToken,
+          usuario: {
+            _id: usuario._id,
+            nombre: usuario.nombre,
+            email: usuario.email,
+            avatar: usuario.avatar,
+            proveedor: usuario.proveedor
+          }
+        },
+        200
+      );
     }
 
-    // Generar token JWT para la aplicación
-    const token = generarTokenAcceso(usuario._id, usuario.email, usuario.rol);
-
-    // Establecer cookie
+    const token = generarTokenAcceso(usuario._id, usuario.rol);
+    const refreshToken = generarTokenActualizacion(usuario._id);
     establecerTokenEnCookie(res, token);
 
     return successResponse(res, 'Autenticación exitosa', {
       token,
+      refreshToken,
       usuario: {
         _id: usuario._id,
         nombre: usuario.nombre,
@@ -736,7 +723,6 @@ const firebaseLogin = async (req, res, next) => {
         proveedor: usuario.proveedor
       }
     }, 200);
-
   } catch (error) {
     console.error('Error en firebaseLogin:', error);
     return errorResponse(res, 'Error en la autenticación', 500);
@@ -745,30 +731,52 @@ const firebaseLogin = async (req, res, next) => {
 
 // @desc    Seleccionar rol después del registro OAuth
 // @route   POST /api/auth/seleccionar-rol
-// @access  Public (con userId)
+// @access  Public (requiere pendingToken / Bearer de selección de rol)
 const seleccionarRol = async (req, res, next) => {
   try {
-    const { 
-      userId, 
-      rol, 
-      nombreEmpresa, 
-      descripcionEmpresa, 
+    const {
+      userId,
+      rol,
+      pendingToken,
+      nombreEmpresa,
+      descripcionEmpresa,
       categoriaEmpresa,
       sitioWeb,
       redesSociales,
       telefono,
-      tipoDocumento, 
-      numeroDocumento 
+      tipoDocumento,
+      numeroDocumento
     } = req.body;
 
-    console.log('📝 Datos recibidos para seleccionar rol:', { userId, rol, nombreEmpresa, telefono });
+    const resolvePendingOwnerId = () => {
+      let tok = null;
+      const h = req.headers.authorization;
+      if (h && h.startsWith('Bearer ')) tok = h.split(' ')[1];
+      if (!tok && pendingToken) tok = pendingToken;
+      if (!tok) return null;
+      try {
+        const d = verificarTokenSeleccionRol(tok);
+        return String(d.id);
+      } catch {
+        return null;
+      }
+    };
 
     if (!userId || !rol) {
       return errorResponse(res, 'Usuario y rol son requeridos', 400);
     }
 
+    const pendingSubject = resolvePendingOwnerId();
+    if (!pendingSubject || pendingSubject !== String(userId)) {
+      return errorResponse(
+        res,
+        'Sesión de selección de rol inválida o vencida. Vuelve a iniciar sesión con Google.',
+        401
+      );
+    }
+
     const usuario = await User.findById(userId);
-    
+
     if (!usuario) {
       return errorResponse(res, 'Usuario no encontrado', 404);
     }
@@ -777,16 +785,17 @@ const seleccionarRol = async (req, res, next) => {
       return errorResponse(res, 'El usuario ya tiene un rol asignado', 400);
     }
 
-    // Actualizar rol
     usuario.rol = rol;
 
-    // Si es comerciante, requerir datos adicionales
     if (rol === 'comerciante') {
       if (!nombreEmpresa || !descripcionEmpresa || !categoriaEmpresa || !telefono) {
-        return errorResponse(res, 'Nombre de empresa, descripción, categoría y teléfono son requeridos para comerciantes', 400);
+        return errorResponse(
+          res,
+          'Nombre de empresa, descripción, categoría y teléfono son requeridos para comerciantes',
+          400
+        );
       }
-      
-      // Actualizar datos del negocio
+
       usuario.nombreEmpresa = nombreEmpresa;
       usuario.descripcionEmpresa = descripcionEmpresa;
       usuario.categoriaEmpresa = categoriaEmpresa;
@@ -795,32 +804,35 @@ const seleccionarRol = async (req, res, next) => {
       usuario.telefono = telefono;
       usuario.tipoDocumento = tipoDocumento;
       usuario.numeroDocumento = numeroDocumento;
-      
-      // Generar código de verificación
+
       const codigo = Math.floor(100000 + Math.random() * 900000).toString();
       usuario.codigoVerificacion = codigo;
-      usuario.codigoExpiracion = new Date(Date.now() + 30 * 60 * 1000); // 30 minutos
-      
+      usuario.codigoExpiracion = new Date(Date.now() + 30 * 60 * 1000);
+
       await usuario.save();
-      
-      // Enviar email con código
+
       await enviarEmailBienvenida(usuario.email, usuario.nombre, codigo);
-      
-      return successResponse(res, 'Datos de comerciante guardados. Revisa tu email para el código de verificación', {
-        requiereVerificacion: true,
-        userId: usuario._id
-      }, 200);
+
+      return successResponse(
+        res,
+        'Datos de comerciante guardados. Revisa tu email para el código de verificación',
+        {
+          requiereVerificacion: true,
+          userId: usuario._id
+        },
+        200
+      );
     }
 
-    // Si es cliente, solo guardar
     await usuario.save();
 
-    // Generar token JWT
-    const token = generarTokenAcceso(usuario._id, usuario.email, usuario.rol);
+    const token = generarTokenAcceso(usuario._id, usuario.rol);
+    const refreshToken = generarTokenActualizacion(usuario._id);
     establecerTokenEnCookie(res, token);
 
     return successResponse(res, 'Rol asignado exitosamente', {
       token,
+      refreshToken,
       usuario: {
         _id: usuario._id,
         nombre: usuario.nombre,
@@ -830,10 +842,95 @@ const seleccionarRol = async (req, res, next) => {
         verificado: usuario.verificado
       }
     }, 200);
-
   } catch (error) {
     console.error('Error en seleccionarRol:', error);
     return errorResponse(res, 'Error al seleccionar rol', 500);
+  }
+};
+
+const intercambiarCodigoOAuth = async (req, res, next) => {
+  try {
+    const { code } = req.body;
+    if (!code || typeof code !== 'string') {
+      return errorResponse(res, 'Código requerido', 400);
+    }
+
+    const handoff = await OAuthHandoff.findOneAndDelete({ code });
+    if (!handoff || handoff.expiresAt < new Date()) {
+      return errorResponse(res, 'Código inválido o expirado', 400);
+    }
+
+    let payload;
+    try {
+      payload = verificarToken(handoff.accessToken);
+    } catch {
+      return errorResponse(res, 'Código inválido o expirado', 400);
+    }
+
+    const u = await User.findById(payload.id).select('-password');
+    if (!u) {
+      return errorResponse(res, 'Usuario no encontrado', 404);
+    }
+
+    successResponse(res, 'Sesión lista', {
+      token: handoff.accessToken,
+      refreshToken: handoff.refreshToken,
+      usuario: {
+        _id: u._id,
+        nombre: u.nombre,
+        email: u.email,
+        rol: u.rol,
+        avatar: u.avatar || u.fotoPerfilSocial,
+        verificado: u.verificado
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const refrescarSesion = async (req, res, next) => {
+  try {
+    const { refreshToken } = req.body;
+    if (!refreshToken) {
+      return errorResponse(res, 'Refresh token requerido', 400);
+    }
+
+    let decoded;
+    try {
+      decoded = verificarRefreshToken(refreshToken);
+    } catch {
+      return res.status(401).json({
+        exito: false,
+        mensaje: 'Refresh token inválido o expirado.',
+        codigo: 'REFRESH_INVALID'
+      });
+    }
+
+    if (decoded.tipo !== 'refresh') {
+      return res.status(401).json({
+        exito: false,
+        mensaje: 'Token inválido',
+        codigo: 'REFRESH_INVALID'
+      });
+    }
+
+    const usuario = await User.findById(decoded.id).select('-password');
+    if (!usuario || usuario.estado !== 'activo') {
+      return res.status(401).json({
+        exito: false,
+        mensaje: 'Sesión no válida',
+        codigo: 'REFRESH_INVALID'
+      });
+    }
+
+    const token = generarTokenAcceso(usuario._id, usuario.rol);
+    const newRefresh = generarTokenActualizacion(usuario._id);
+    establecerTokenEnCookie(res, token);
+
+    successResponse(res, 'Tokens actualizados', { token, refreshToken: newRefresh });
+  } catch (error) {
+    next(error);
   }
 };
 
@@ -853,5 +950,7 @@ module.exports = {
   facebookCallback,
   oauthFailure,
   firebaseLogin,
-  seleccionarRol
+  seleccionarRol,
+  intercambiarCodigoOAuth,
+  refrescarSesion
 }; 

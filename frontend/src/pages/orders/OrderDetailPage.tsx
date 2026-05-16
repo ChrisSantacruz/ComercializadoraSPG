@@ -1,202 +1,135 @@
-import React, { useState, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import React, { useState } from 'react';
+import { useLocation, useParams } from 'react-router-dom';
+import { CalendarDaysIcon, CreditCardIcon, CurrencyDollarIcon } from '@heroicons/react/24/outline';
 import { Order, OrderTimeline } from '../../types';
-import orderService from '../../services/orderService';
-import LoadingSpinner from '../../components/ui/LoadingSpinner';
-import { debugOrderImages } from '../../utils/debugUtils';
+import { Button } from '../../components/ui/Button';
+import { Card, CardBody } from '../../components/ui/Card';
+import { Skeleton } from '../../components/ui/Skeleton';
 import { getImageUrl, getFirstImageUrl } from '../../utils/imageUtils';
 import { formatDeliveryInfo } from '../../utils/addressUtils';
+import { useOrderDetailQuery } from '../../lib/query/hooks/useOrdersQuery';
+import { Container } from '../../components/ui/Container';
+
+function humanizeEstado(estado: string): string {
+  const map: Record<string, string> = {
+    pendiente: 'Pendiente',
+    payment_pending: 'Pago pendiente',
+    payment_failed: 'Pago no aprobado',
+    confirmado: 'Confirmado',
+    procesando: 'En preparación',
+    enviado: 'Enviado',
+    entregado: 'Entregado',
+    cancelado: 'Cancelado',
+    devuelto: 'Devuelto',
+    paid: 'Pagado'
+  };
+  return map[estado] || estado;
+}
+
+/** Timeline basada solo en datos del pedido (sin simulaciones ni tracking inventado). */
+function buildOrderTimelineFromOrder(order: Order): OrderTimeline[] {
+  const hist = order.historialEstados;
+  if (hist?.length) {
+    return hist.map((h) => ({
+      estado: h.estado,
+      titulo: humanizeEstado(h.estado),
+      descripcion: h.comentario || 'Actualización de estado registrada en el sistema.',
+      fecha: typeof h.fecha === 'string' ? h.fecha : String(h.fecha),
+      completado: true,
+      icono: '•'
+    }));
+  }
+
+  const est = order.estado;
+  const mp = order.metodoPago;
+  const rows: OrderTimeline[] = [];
+
+  rows.push({
+    estado: 'registrado',
+    titulo: 'Pedido registrado',
+    descripcion: 'Tu pedido quedó registrado.',
+    fecha: order.fechaCreacion,
+    completado: true,
+    icono: '1'
+  });
+
+  const pagoAprobado =
+    mp.estado === 'aprobado' || ['confirmado', 'procesando', 'enviado', 'entregado', 'paid'].includes(est);
+  const pagoFallido = est === 'payment_failed' || mp.estado === 'rechazado';
+
+  rows.push({
+    estado: 'pago',
+    titulo: pagoFallido ? 'Pago no aprobado' : pagoAprobado ? 'Pago acreditado' : 'Pago en proceso',
+    descripcion: pagoFallido
+      ? order.paymentInfo?.failureReason || 'El proveedor de pagos no aprobó la transacción.'
+      : pagoAprobado
+        ? 'El pago fue acreditado correctamente.'
+        : 'Esperando confirmación del proveedor de pagos.',
+    fecha: pagoAprobado && mp.fechaPago ? mp.fechaPago : undefined,
+    completado: pagoAprobado || pagoFallido,
+    icono: '2'
+  });
+
+  if (pagoFallido) {
+    return rows;
+  }
+
+  rows.push({
+    estado: 'preparacion',
+    titulo: 'Preparación del pedido',
+    descripcion: 'El comerciante prepara tu pedido para envío.',
+    fecha: ['confirmado', 'procesando', 'enviado', 'entregado'].includes(est) ? order.fechaActualizacion : undefined,
+    completado: ['confirmado', 'procesando', 'enviado', 'entregado'].includes(est),
+    icono: '3'
+  });
+
+  rows.push({
+    estado: 'enviado',
+    titulo: 'Envío',
+    descripcion: order.envio?.numeroGuia
+      ? `Guía ${order.envio.numeroGuia}${order.envio.empresa ? ` · ${order.envio.empresa}` : ''}`
+      : order.seguimiento?.numeroSeguimiento
+        ? `Seguimiento ${order.seguimiento.numeroSeguimiento}`
+        : 'Cuando exista información de envío, aparecerá aquí.',
+    fecha: order.envio?.fechaEnvio || order.seguimiento?.fechaEnvio,
+    completado: ['enviado', 'entregado'].includes(est),
+    icono: '4',
+    detalles:
+      order.seguimiento?.numeroSeguimiento && order.seguimiento?.transportadora
+        ? {
+            numeroSeguimiento: order.seguimiento.numeroSeguimiento,
+            transportadora: String(order.seguimiento.transportadora)
+          }
+        : undefined
+  });
+
+  rows.push({
+    estado: 'entregado',
+    titulo: 'Entrega',
+    descripcion: 'Pedido entregado al destinatario.',
+    fecha: order.envio?.fechaEntregaReal,
+    completado: est === 'entregado',
+    icono: '5'
+  });
+
+  return rows;
+}
 
 const OrderDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
-  const [order, setOrder] = useState<Order | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const location = useLocation() as { state?: { fromWompi?: boolean } };
+  const [showWompiBanner, setShowWompiBanner] = useState(!!location.state?.fromWompi);
 
-  // Timeline de estados simulado para demostración
-  const getOrderTimeline = (orderStatus: string): OrderTimeline[] => {
-    const timeline: OrderTimeline[] = [
-      {
-        estado: 'pendiente',
-        titulo: 'Pedido Realizado',
-        descripcion: 'Tu pedido ha sido recibido y está siendo procesado',
-        fecha: new Date().toISOString(),
-        completado: true,
-        icono: '🛒'
-      },
-      {
-        estado: 'confirmado',
-        titulo: 'Pedido Confirmado',
-        descripcion: 'El comerciante ha confirmado tu pedido',
-        fecha: orderStatus !== 'pendiente' ? new Date(Date.now() + 30*60*1000).toISOString() : undefined,
-        completado: ['confirmado', 'procesando', 'enviado', 'entregado'].includes(orderStatus),
-        icono: '✅'
-      },
-      {
-        estado: 'procesando',
-        titulo: 'Preparando Paquete',
-        descripcion: 'Tu pedido está siendo preparado para el envío',
-        fecha: orderStatus === 'procesando' || orderStatus === 'enviado' || orderStatus === 'entregado' ? new Date(Date.now() + 2*60*60*1000).toISOString() : undefined,
-        completado: ['procesando', 'enviado', 'entregado'].includes(orderStatus),
-        icono: '📦'
-      },
-      {
-        estado: 'enviado',
-        titulo: 'Paquete Enviado',
-        descripcion: 'Tu paquete está en camino',
-        fecha: orderStatus === 'enviado' || orderStatus === 'entregado' ? new Date(Date.now() + 24*60*60*1000).toISOString() : undefined,
-        completado: ['enviado', 'entregado'].includes(orderStatus),
-        icono: '🚚',
-        detalles: orderStatus === 'enviado' || orderStatus === 'entregado' ? {
-          numeroSeguimiento: 'TRK123456789',
-          transportadora: 'Servientrega'
-        } : undefined
-      },
-      {
-        estado: 'entregado',
-        titulo: 'Pedido Entregado',
-        descripcion: '¡Tu pedido ha sido entregado exitosamente!',
-        fecha: orderStatus === 'entregado' ? new Date(Date.now() + 48*60*60*1000).toISOString() : undefined,
-        completado: orderStatus === 'entregado',
-        icono: '🎉'
-      }
-    ];
+  const {
+    data: order,
+    isLoading,
+    isError,
+    error: queryError,
+    refetch,
+    isFetching,
+  } = useOrderDetailQuery(id, { pollPaymentPending: true });
 
-    return timeline;
-  };
-
-  useEffect(() => {
-    loadOrderDetail();
-  }, [id]);
-
-  const loadOrderDetail = async () => {
-    if (!id) return;
-
-    try {
-      setLoading(true);
-      
-      // Intentar cargar la orden real del backend
-      try {
-        const orderData = await orderService.getOrderById(id);
-        setOrder(orderData);
-        setError(null);
-        
-        // Debug de imágenes - no fallar si hay errores en el debug
-        try {
-          debugOrderImages(orderData);
-        } catch (debugError) {
-          console.warn('Error en debug de imágenes (no afecta la funcionalidad):', debugError);
-        }
-        
-        return;
-      } catch (backendError) {
-        console.warn('No se pudo cargar la orden del backend, usando datos simulados:', backendError);
-      }
-      
-      // Simular datos de orden para demostración si falla el backend
-      const simulatedOrder: Order = {
-        _id: id,
-        numeroOrden: `ORD-${id.slice(-6).toUpperCase()}`,
-        cliente: {
-          _id: 'user1',
-          nombre: 'Juan Pérez',
-          email: 'juan@email.com',
-          telefono: '3001234567',
-          rol: 'cliente',
-          verificado: true,
-          estado: 'activo',
-          fechaCreacion: '',
-          fechaActualizacion: ''
-        },
-        productos: [
-          {
-            _id: 'item1',
-            producto: {
-              _id: 'prod1',
-              nombre: 'Smartphone Samsung Galaxy A54',
-              descripcion: 'Teléfono inteligente con cámara de 50MP',
-              precio: 850000,
-              stock: 10,
-              imagenes: ['/api/placeholder/300/300'],
-              categoria: 'tecnologia',
-              comerciante: 'merchant1',
-              estado: 'aprobado',
-              especificaciones: { color: 'Negro', memoria: '128GB' },
-              tags: ['tecnologia', 'smartphone'],
-              fechaCreacion: '',
-              fechaActualizacion: '',
-              estadisticas: { vistas: 100, vendidos: 5, calificacionPromedio: 4.5, totalReseñas: 10 }
-            },
-            comerciante: {
-              _id: 'merchant1',
-              nombre: 'Comerciante Demo',
-              email: 'comerciante@email.com',
-              telefono: '3001234567',
-              rol: 'comerciante',
-              verificado: true,
-              estado: 'activo',
-              fechaCreacion: '',
-              fechaActualizacion: ''
-            },
-            cantidad: 1,
-            precio: 850000,
-            subtotal: 850000,
-            nombre: 'Smartphone Samsung Galaxy A54',
-            imagen: '/api/placeholder/300/300'
-          }
-        ],
-        subtotal: 850000,
-        impuestos: 161500,
-        costoEnvio: 0,
-        descuentos: 0,
-        total: 1011500,
-        estado: 'confirmado',
-        direccionEntrega: {
-          _id: 'addr1',
-          alias: 'Casa',
-          nombreDestinatario: 'Juan Pérez',
-          telefono: '3001234567',
-          direccion: {
-            calle: 'Calle 123',
-            numero: '45-67',
-            barrio: 'Centro',
-            ciudad: 'Bogotá',
-            departamento: 'Cundinamarca',
-            codigoPostal: '110111',
-            pais: 'Colombia'
-          },
-          tipo: 'casa',
-          configuracion: {
-            esPredeterminada: true,
-            esFacturacion: true,
-            esEnvio: true,
-            activa: true
-          },
-          direccionCompleta: 'Calle 123 #45-67, Centro, Bogotá, Cundinamarca',
-          estadisticas: {
-            vecesUsada: 5,
-            entregasExitosas: 5,
-            entregasFallidas: 0
-          }
-        },
-        metodoPago: {
-          tipo: 'PSE',
-          estado: 'aprobado',
-          transaccionId: 'TXN_' + Date.now(),
-          fechaPago: new Date().toISOString()
-        },
-        fechaCreacion: new Date().toISOString(),
-        fechaActualizacion: new Date().toISOString()
-      };
-
-      setOrder(simulatedOrder);
-      setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error cargando detalle del pedido');
-    } finally {
-      setLoading(false);
-    }
-  };
+  const loadOrderDetail = () => void refetch();
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleString('es-CO', {
@@ -209,57 +142,95 @@ const OrderDetailPage: React.FC = () => {
   };
 
   const getStatusColor = (status: string) => {
-    const colors = {
+    const colors: Record<string, string> = {
       pendiente: 'bg-yellow-100 text-yellow-800',
+      payment_pending: 'bg-amber-100 text-amber-900',
+      payment_failed: 'bg-red-100 text-red-800',
       confirmado: 'bg-blue-100 text-blue-800',
       procesando: 'bg-orange-100 text-orange-800',
       enviado: 'bg-purple-100 text-purple-800',
       entregado: 'bg-green-100 text-green-800',
-      cancelado: 'bg-red-100 text-red-800'
+      cancelado: 'bg-red-100 text-red-800',
+      paid: 'bg-green-100 text-green-800',
+      devuelto: 'bg-gray-200 text-gray-800'
     };
-    return colors[status as keyof typeof colors] || 'bg-gray-100 text-gray-800';
+    return colors[status] || 'bg-gray-100 text-gray-800';
   };
 
   const getStatusText = (status: string) => {
-    const texts = {
+    const texts: Record<string, string> = {
       pendiente: 'Pendiente',
+      payment_pending: 'Pago pendiente',
+      payment_failed: 'Pago rechazado',
       confirmado: 'Confirmado',
       procesando: 'Preparando',
       enviado: 'Enviado',
       entregado: 'Entregado',
-      cancelado: 'Cancelado'
+      cancelado: 'Cancelado',
+      paid: 'Pagado',
+      devuelto: 'Devuelto'
     };
-    return texts[status as keyof typeof texts] || status;
+    return texts[status] || status;
   };
 
-  if (loading) return <LoadingSpinner />;
-
-  if (error) {
+  if (isLoading && !order) {
     return (
-      <div className="container mx-auto px-4 py-8">
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
-          {error}
+      <Container as="main" className="py-8">
+        <div className="space-y-4">
+          <Skeleton className="h-10 w-2/3 max-w-md" />
+          <Skeleton className="min-h-[120px] w-full rounded-xl" />
         </div>
-      </div>
+        <div className="mt-8 grid gap-6 lg:grid-cols-3">
+          <div className="lg:col-span-2 space-y-4">
+            <Skeleton className="h-64 w-full rounded-xl" />
+            <Skeleton className="h-48 w-full rounded-xl" />
+          </div>
+          <Skeleton className="h-72 w-full rounded-xl" />
+        </div>
+      </Container>
     );
   }
 
-  if (!order) {
+  if (isError || !order) {
+    const message =
+      queryError instanceof Error
+        ? queryError.message
+        : 'No pudimos cargar el pedido. Reintenta en unos segundos.';
     return (
-      <div className="container mx-auto px-4 py-8">
-        <div className="text-center py-12">
-          <h2 className="text-2xl font-bold text-gray-900 mb-4">Pedido no encontrado</h2>
-          <p className="text-gray-600">El pedido que buscas no existe o no tienes acceso a él.</p>
-        </div>
-      </div>
+      <Container as="main" className="py-8">
+        <Card>
+          <CardBody className="space-y-4 text-center">
+            <p className="font-medium text-gray-800">No pudimos cargar este pedido</p>
+            <p className="text-sm text-gray-600">{message}</p>
+            <Button type="button" variant="primary" onClick={loadOrderDetail}>
+              Reintentar
+            </Button>
+          </CardBody>
+        </Card>
+      </Container>
     );
   }
 
-  const timeline = getOrderTimeline(order.estado);
+  const timeline = buildOrderTimelineFromOrder(order);
 
   return (
     <div className="min-h-screen bg-gray-50 py-8">
       <div className="container mx-auto px-4">
+        {showWompiBanner ? (
+          <div className="mb-6 rounded-xl border border-success-200 bg-success-50 px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <p className="text-sm text-success-900">
+              Pago verificado correctamente. El detalle de tu pedido se actualiza con la información del comerciante.
+            </p>
+            <Button type="button" variant="outline" size="sm" onClick={() => setShowWompiBanner(false)}>
+              Entendido
+            </Button>
+          </div>
+        ) : null}
+        {isFetching ? (
+          <p className="mb-4 text-xs text-gray-500" aria-live="polite">
+            Sincronizando estado del pedido…
+          </p>
+        ) : null}
         {/* Header del pedido */}
         <div className="bg-white rounded-xl shadow-lg p-8 mb-8">
           <div className="flex flex-col lg:flex-row lg:justify-between lg:items-center gap-6">
@@ -268,9 +239,18 @@ const OrderDetailPage: React.FC = () => {
                 Pedido #{order.numeroOrden}
               </h1>
               <div className="flex flex-wrap items-center gap-4 text-sm text-gray-600">
-                <span>📅 {formatDate(order.fechaCreacion)}</span>
-                <span>💳 {order.metodoPago.tipo}</span>
-                <span>💰 ${order.total.toLocaleString('es-CO')}</span>
+                <span className="inline-flex items-center gap-1.5">
+                  <CalendarDaysIcon className="h-4 w-4 text-gray-500" aria-hidden />
+                  {formatDate(order.fechaCreacion)}
+                </span>
+                <span className="inline-flex items-center gap-1.5">
+                  <CreditCardIcon className="h-4 w-4 text-gray-500" aria-hidden />
+                  {order.metodoPago.tipo}
+                </span>
+                <span className="inline-flex items-center gap-1.5 font-medium text-gray-800">
+                  <CurrencyDollarIcon className="h-4 w-4 text-gray-500" aria-hidden />
+                  ${order.total.toLocaleString('es-CO')}
+                </span>
               </div>
             </div>
             <div className="flex items-center gap-4">
@@ -289,7 +269,7 @@ const OrderDetailPage: React.FC = () => {
               
               <div className="relative">
                 {timeline.map((step, index) => (
-                  <div key={step.estado} className="flex items-start mb-8 last:mb-0">
+                  <div key={`${step.estado}-${index}`} className="flex items-start mb-8 last:mb-0">
                     {/* Línea conectora */}
                     {index < timeline.length - 1 && (
                       <div className={`absolute left-6 top-12 w-0.5 h-16 ${
@@ -355,25 +335,22 @@ const OrderDetailPage: React.FC = () => {
                     <div className="flex-shrink-0">
                       <img
                         src={(() => {
-                          // Intentar obtener la imagen del pedido primero
                           if (item.imagen) {
                             try {
                               return getImageUrl(item.imagen);
-                            } catch (error) {
-                              console.warn('Error obteniendo imagen del pedido:', error);
+                            } catch {
+                              /* continuar con producto */
                             }
                           }
-                          
-                          // Si no hay imagen del pedido o hay error, usar la del producto
+
                           if (item.producto?.imagenes && item.producto.imagenes.length > 0) {
                             try {
                               return getFirstImageUrl(item.producto.imagenes);
-                            } catch (error) {
-                              console.warn('Error obteniendo imagen del producto:', error);
+                            } catch {
+                              /* fallback abajo */
                             }
                           }
-                          
-                          // Fallback final
+
                           return '/images/default-product.svg';
                         })()}
                         alt={item.producto.nombre}
@@ -499,12 +476,22 @@ const OrderDetailPage: React.FC = () => {
                 
                 <div>
                   <div className="text-sm font-medium text-gray-700">Estado del pago</div>
-                  <span className={`inline-block px-3 py-1 rounded-full text-sm font-semibold ${
-                    order.metodoPago.estado === 'aprobado' 
-                      ? 'bg-green-100 text-green-800' 
-                      : 'bg-yellow-100 text-yellow-800'
-                  }`}>
-                    {order.metodoPago.estado === 'aprobado' ? 'Pagado' : 'Pendiente'}
+                  <span
+                    className={`inline-block px-3 py-1 rounded-full text-sm font-semibold ${
+                      order.metodoPago.estado === 'aprobado'
+                        ? 'bg-green-100 text-green-800'
+                        : order.metodoPago.estado === 'rechazado'
+                          ? 'bg-red-100 text-red-800'
+                          : 'bg-yellow-100 text-yellow-800'
+                    }`}
+                  >
+                    {order.metodoPago.estado === 'aprobado'
+                      ? 'Pagado'
+                      : order.metodoPago.estado === 'rechazado'
+                        ? 'Rechazado'
+                        : order.metodoPago.estado === 'procesando'
+                          ? 'Procesando'
+                          : 'Pendiente'}
                   </span>
                 </div>
                 

@@ -6,8 +6,10 @@ module.exports = {
   theme: {
     extend: {
       fontFamily: {
-        'montserrat': ['Montserrat', 'sans-serif'],
-        'inter': ['Inter', 'sans-serif'],
+        sans: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        display: ['Montserrat', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        montserrat: ['Montserrat', 'sans-serif'],
+        inter: ['Inter', 'sans-serif'],
       },
       colors: {
         // Nueva paleta de colores para Comercializadora SPG
@@ -45,11 +47,13 @@ module.exports = {
           200: '#c9dfdb',
           300: '#9cc5bd',
           400: '#6aa49a',
-          500: '#1c3a35', // Verde oscuro principal
+          500: '#1c3a35', // Verde oscuro principal (verde-oscuro)
           600: '#17312d',
           700: '#142824',
           800: '#12201e',
           900: '#101b19',
+          // Navbar / footer / overlays: mismo matiz que 900 pero más profundo (evitar bg “fantasma”).
+          950: '#081210',
         },
         success: {
           50: '#f0fdf4',
@@ -87,18 +91,6 @@ module.exports = {
           800: '#92400e',
           900: '#78350f',
         },
-        accent: {
-          50: '#eef2ff',
-          100: '#e0e7ff',
-          200: '#c7d2fe',
-          300: '#a5b4fc',
-          400: '#818cf8',
-          500: '#6366F1', // Índigo acento
-          600: '#5b21b6',
-          700: '#4c1d95',
-          800: '#4c1d95',
-          900: '#3730a3',
-        },
         gray: {
           50: '#F9FAFB', // Fondo general
           100: '#f3f4f6',
@@ -112,9 +104,11 @@ module.exports = {
           900: '#111827', // Texto principal
         },
       },
-      fontFamily: {
-        'sans': ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
-        'display': ['Poppins', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+      zIndex: {
+        nav: '50',
+        dropdown: '60',
+        modal: '70',
+        toast: '80',
       },
       animation: {
         'fade-in': 'fadeIn 0.5s ease-in-out',

@@ -6,6 +6,49 @@ const Review = require('../models/Review'); // Added Review model
 const Order = require('../models/Order'); // Added Order model
 const mongoose = require('mongoose');
 
+/**
+ * Construye documentos `imagenes` desde req.files (disco local o Cloudinary).
+ * Se guarda `/uploads/...` o URL absoluta; el frontend antepone REACT_APP_API_URL a las rutas relativas.
+ */
+function mapUploadedFilesToImagenes(files, nombreBase) {
+  if (!files || !files.length) return [];
+  const baseName = nombreBase || 'Producto';
+  const out = [];
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+    let imageUrl;
+    const p = file.path != null ? String(file.path) : '';
+    if (p.startsWith('http://') || p.startsWith('https://')) {
+      imageUrl = p;
+    } else if (p) {
+      const norm = p.replace(/\\/g, '/');
+      const lower = norm.toLowerCase();
+      const idx = lower.indexOf('/uploads/');
+      if (idx !== -1) {
+        imageUrl = norm.slice(idx);
+      } else {
+        const up = lower.indexOf('uploads/');
+        if (up !== -1) {
+          imageUrl = `/${norm.slice(up)}`;
+        } else {
+          imageUrl = `/uploads/productos/${file.filename || `file-${Date.now()}`}`;
+        }
+      }
+    } else if (file.filename) {
+      imageUrl = `/uploads/productos/${file.filename}`;
+    } else {
+      continue;
+    }
+    out.push({
+      url: String(imageUrl).replace(/\\/g, '/'),
+      publicId: file.public_id || null,
+      alt: `${baseName} - Imagen ${i + 1}`,
+      orden: i,
+    });
+  }
+  return out;
+}
+
 // @desc    Obtener todos los productos
 // @route   GET /api/products
 // @access  Public
@@ -18,8 +61,6 @@ const obtenerProductos = async (req, res) => {
     const minPrecio = req.query.precioMin || req.query.minPrecio;
     const maxPrecio = req.query.precioMax || req.query.maxPrecio;
     const ordenar = req.query.ordenar || 'fechaCreacion';
-
-    console.log('🔍 Parámetros de búsqueda:', { page, limit, categoria, busqueda, minPrecio, maxPrecio, ordenar });
 
     // Construir filtros
     let filtros = { estado: 'aprobado' };
@@ -45,9 +86,11 @@ const obtenerProductos = async (req, res) => {
     let sortOptions = {};
     switch (ordenar) {
       case 'precio_asc':
+      case 'precio-asc':
         sortOptions = { precio: 1 };
         break;
       case 'precio_desc':
+      case 'precio-desc':
         sortOptions = { precio: -1 };
         break;
       case 'nombre':
@@ -55,6 +98,17 @@ const obtenerProductos = async (req, res) => {
         break;
       case 'calificacion':
         sortOptions = { 'estadisticas.calificacionPromedio': -1 };
+        break;
+      case 'fecha_asc':
+      case 'fecha-asc':
+        sortOptions = { fechaCreacion: 1 };
+        break;
+      case 'fechaCreacion':
+      case 'fecha-desc':
+        sortOptions = { fechaCreacion: -1 };
+        break;
+      case 'popular':
+        sortOptions = { 'estadisticas.cantidadVendida': -1 };
         break;
       default:
         sortOptions = { fechaCreacion: -1 };
@@ -70,8 +124,6 @@ const obtenerProductos = async (req, res) => {
 
     const total = await Product.countDocuments(filtros);
     const paginacion = paginateData(total, page, limit);
-
-    console.log('📦 Productos encontrados:', productos.length, 'de', total);
 
     // Transformar URLs de imágenes
     const productosTransformados = transformarProductos(productos);
@@ -262,54 +314,12 @@ const crearProducto = async (req, res) => {
       }
     }
 
-    // Procesar imágenes de manera más robusta
+    // Procesar imágenes
     if (req.files && req.files.length > 0) {
-      console.log('📸 Procesando imágenes:', req.files.length, 'archivos');
-      
-      const imagenesData = [];
-      
-      for (let i = 0; i < req.files.length; i++) {
-        const file = req.files[i];
-        let imageUrl;
-        
-        if (file.path) {
-          // Cloudinary o ruta completa
-          if (file.path.startsWith('http')) {
-            // Es una URL de Cloudinary
-            imageUrl = file.path;
-          } else {
-            // Es una ruta local, convertir a ruta relativa
-            const pathParts = file.path.split('uploads');
-            if (pathParts.length > 1) {
-              imageUrl = `/uploads${pathParts[1]}`;
-            } else {
-              // Fallback: usar solo el nombre del archivo
-              imageUrl = `/uploads/productos/${file.filename}`;
-            }
-          }
-        } else if (file.filename) {
-          // Almacenamiento local
-          imageUrl = `/uploads/productos/${file.filename}`;
-        } else {
-          console.warn('⚠️ Archivo sin ruta válida:', file);
-          continue;
-        }
-        
-        const imagenData = {
-          url: imageUrl.replace(/\\/g, '/'), // Reemplazar backslash por slash
-          publicId: file.public_id || null,
-          alt: `${datosProducto.nombre} - Imagen ${i + 1}`,
-          orden: i
-        };
-        
-        imagenesData.push(imagenData);
-        console.log(`✅ Imagen ${i + 1} procesada: ${imageUrl}`);
-      }
-      
+      const imagenesData = mapUploadedFilesToImagenes(req.files, datosProducto.nombre);
       if (imagenesData.length > 0) {
-  datosProducto.imagenes = imagenesData; // Guardar como array de objetos
-  datosProducto.imagenPrincipal = imagenesData[0].url.replace(/\\/g, '/');
-        console.log(`💾 ${imagenesData.length} imágenes guardadas para el producto`);
+        datosProducto.imagenes = imagenesData;
+        datosProducto.imagenPrincipal = imagenesData[0].url;
       }
     } else {
       console.log('📷 No se subieron imágenes para este producto');
@@ -324,7 +334,7 @@ const crearProducto = async (req, res) => {
 
     console.log('✅ Producto creado exitosamente:', producto._id);
 
-    successResponse(res, 'Producto creado exitosamente y ya está disponible en el mercado.', producto, 201);
+    successResponse(res, 'Producto creado exitosamente y ya está disponible en el mercado.', transformarProducto(producto.toObject({ virtuals: true })), 201);
 
   } catch (error) {
     console.error('❌ Error creando producto:', error);
@@ -340,7 +350,6 @@ const crearProducto = async (req, res) => {
 // @access  Private (Comerciante - Solo sus productos)
 const actualizarProducto = async (req, res) => {
   try {
-    // Validar que el ID sea un ObjectId válido
     if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
       return errorResponse(res, 'ID de producto inválido', 400);
     }
@@ -351,21 +360,75 @@ const actualizarProducto = async (req, res) => {
       return errorResponse(res, 'Producto no encontrado', 404);
     }
 
-    // Verificar que el comerciante sea el dueño del producto
     if (producto.comerciante.toString() !== req.usuario.id) {
       return errorResponse(res, 'No tienes permiso para actualizar este producto', 403);
     }
 
-    // Los productos mantienen su estado aprobado al actualizarse
+    const b = req.body || {};
 
-    const productoActualizado = await Product.findByIdAndUpdate(
-      req.params.id,
-      req.body,
-      { new: true, runValidators: true }
-    ).populate('comerciante', 'nombre email');
+    if (b.nombre != null && String(b.nombre).trim() !== '') {
+      producto.nombre = String(b.nombre).trim();
+    }
+    if (b.descripcion != null && String(b.descripcion).trim() !== '') {
+      producto.descripcion = String(b.descripcion).trim();
+    }
+    if (b.precio != null && String(b.precio).trim() !== '') {
+      producto.precio = parseFloat(b.precio);
+    }
+    if (b.stock != null && String(b.stock).trim() !== '') {
+      producto.stock = parseInt(b.stock, 10);
+    }
+    if (b.categoria != null && String(b.categoria).trim() !== '') {
+      producto.categoria = b.categoria;
+    }
 
-    successResponse(res, 'Producto actualizado exitosamente', productoActualizado);
+    if (b.tags) {
+      try {
+        producto.tags =
+          typeof b.tags === 'string' ? JSON.parse(b.tags) : b.tags;
+      } catch {
+        producto.tags = String(b.tags)
+          .split(',')
+          .map((tag) => tag.trim())
+          .filter(Boolean);
+      }
+    }
 
+    if (b.especificaciones) {
+      try {
+        const specs =
+          typeof b.especificaciones === 'string'
+            ? JSON.parse(b.especificaciones)
+            : b.especificaciones;
+        producto.especificaciones = Object.entries(specs)
+          .filter(([, value]) => value && String(value).trim() !== '')
+          .map(([nombre, valor]) => ({ nombre, valor: String(valor) }));
+      } catch (e) {
+        console.warn('⚠️  Error procesando especificaciones en actualización:', e.message);
+      }
+    }
+
+    if (req.files && req.files.length > 0) {
+      const nuevas = mapUploadedFilesToImagenes(req.files, producto.nombre);
+      const offset = producto.imagenes?.length || 0;
+      nuevas.forEach((img, idx) => {
+        img.orden = offset + idx;
+      });
+      producto.imagenes = [...(producto.imagenes || []), ...nuevas];
+      if (!producto.imagenPrincipal && nuevas.length > 0) {
+        producto.imagenPrincipal = nuevas[0].url;
+      }
+      producto.markModified('imagenes');
+    }
+
+    await producto.save();
+    await producto.populate('comerciante', 'nombre email');
+
+    successResponse(
+      res,
+      'Producto actualizado exitosamente',
+      transformarProducto(producto.toObject({ virtuals: true })),
+    );
   } catch (error) {
     console.error('Error actualizando producto:', error);
     if (error.name === 'ValidationError') {
@@ -473,14 +536,22 @@ const subirImagenes = async (req, res) => {
       return errorResponse(res, 'No se han subido imágenes', 400);
     }
 
-    // Las URLs de las imágenes ya están procesadas por Cloudinary en req.files
-    const nuevasImagenes = req.files.map(file => file.path);
-    
-    producto.imagenes = [...producto.imagenes, ...nuevasImagenes];
+    const nuevas = mapUploadedFilesToImagenes(req.files, producto.nombre);
+    const offset = producto.imagenes?.length || 0;
+    nuevas.forEach((img, idx) => {
+      img.orden = offset + idx;
+    });
+    producto.imagenes = [...(producto.imagenes || []), ...nuevas];
+    if (!producto.imagenPrincipal && nuevas.length > 0) {
+      producto.imagenPrincipal = nuevas[0].url;
+    }
+    producto.markModified('imagenes');
     await producto.save();
 
+    const doc = transformarProducto(producto.toObject({ virtuals: true }));
     successResponse(res, 'Imágenes subidas exitosamente', {
-      imagenes: producto.imagenes
+      imagenes: doc?.imagenes || [],
+      imagenPrincipal: doc?.imagenPrincipal,
     });
 
   } catch (error) {

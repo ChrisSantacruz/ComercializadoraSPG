@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Cart, Address, OrderForm } from '../../types';
 import { cartService } from '../../services/cartService';
@@ -6,15 +6,40 @@ import addressService from '../../services/addressService';
 import orderService from '../../services/orderService';
 import wompiService from '../../services/wompiService';
 import LoadingSpinner from '../../components/ui/LoadingSpinner';
-import { useNotificationCard } from '../../hooks/useNotificationCard';
+import { Button } from '../../components/ui/Button';
+import { Input } from '../../components/ui/Input';
+import { Container } from '../../components/ui/Container';
+import { useNotifications } from '../../components/ui/NotificationContainer';
 import { useAuthStore } from '../../stores/authStore';
+import { BRAND_NAME } from '../../components/nav/navData';
 import { getDepartamentos, getCiudadesPorDepartamento } from '../../utils/colombiaData';
+import {
+  CheckIcon,
+  ChatBubbleBottomCenterTextIcon,
+  MapPinIcon,
+  PhoneIcon,
+} from '@heroicons/react/24/outline';
+
+const CHECKOUT_DRAFT_KEY = 'spg_checkout_draft_v1';
 
 const CheckoutPageOptimized: React.FC = () => {
   const navigate = useNavigate();
-  const { showError, showSuccess } = useNotificationCard();
+  const { showError, showSuccess } = useNotifications();
   const { user } = useAuthStore();
-  
+
+  const idempotencyKeyRef = useRef<string | null>(null);
+  const paymentSubmitLock = useRef(false);
+
+  const getCheckoutIdempotencyKey = () => {
+    if (!idempotencyKeyRef.current) {
+      idempotencyKeyRef.current =
+        typeof crypto !== 'undefined' && crypto.randomUUID
+          ? crypto.randomUUID()
+          : `idem_${Date.now()}_${Math.random().toString(36).slice(2, 12)}`;
+    }
+    return idempotencyKeyRef.current;
+  };
+
   // Estados principales
   const [cart, setCart] = useState<Cart | null>(null);
   const [addresses, setAddresses] = useState<Address[]>([]);
@@ -61,6 +86,8 @@ const CheckoutPageOptimized: React.FC = () => {
 
   // Estados para método de pago
   const [paymentMethod] = useState<'wompi'>('wompi');
+  const [payerDocument, setPayerDocument] = useState('');
+  const [payerDocumentTouched, setPayerDocumentTouched] = useState(false);
   
   // Estados para selectores de ubicación
   const [ciudadesDisponibles, setCiudadesDisponibles] = useState<string[]>([]);
@@ -89,6 +116,65 @@ const CheckoutPageOptimized: React.FC = () => {
     }
   }, [newAddress.direccion.departamento]);
 
+  useEffect(() => {
+    const doc = user?.numeroDocumento;
+    if (doc) {
+      setPayerDocument(String(doc).replace(/\D/g, ''));
+    }
+  }, [user?.numeroDocumento]);
+
+  useEffect(() => {
+    if (loading || !cart?.productos?.length) return;
+    try {
+      const raw = sessionStorage.getItem(CHECKOUT_DRAFT_KEY);
+      if (!raw) return;
+      const d = JSON.parse(raw) as {
+        savedAt?: number;
+        step?: number;
+        selectedAddress?: string;
+        useNewAddress?: boolean;
+        comments?: string;
+        acceptedTerms?: boolean;
+        payerDocument?: string;
+      };
+      if (!d.savedAt || Date.now() - d.savedAt > 3600000) {
+        sessionStorage.removeItem(CHECKOUT_DRAFT_KEY);
+        return;
+      }
+      if (typeof d.step === 'number' && d.step >= 1 && d.step <= 2) setCurrentStep(d.step);
+      if (d.selectedAddress) setSelectedAddress(d.selectedAddress);
+      if (typeof d.useNewAddress === 'boolean') setUseNewAddress(d.useNewAddress);
+      if (typeof d.comments === 'string') setComments(d.comments);
+      if (typeof d.acceptedTerms === 'boolean') setAcceptedTerms(d.acceptedTerms);
+      if (d.payerDocument) setPayerDocument(d.payerDocument.replace(/\D/g, ''));
+    } catch {
+      sessionStorage.removeItem(CHECKOUT_DRAFT_KEY);
+    }
+  }, [loading, cart?.productos?.length]);
+
+  useEffect(() => {
+    if (!cart?.productos?.length) return;
+    const t = window.setTimeout(() => {
+      try {
+        sessionStorage.setItem(
+          CHECKOUT_DRAFT_KEY,
+          JSON.stringify({
+            savedAt: Date.now(),
+            step: currentStep,
+            selectedAddress,
+            useNewAddress,
+            comments,
+            acceptedTerms,
+            payerDocument: payerDocument.replace(/\D/g, '')
+          })
+        );
+      } catch {
+        /* quota / private mode */
+      }
+    }, 500);
+    return () => window.clearTimeout(t);
+  }, [currentStep, selectedAddress, useNewAddress, comments, acceptedTerms, payerDocument, cart?.productos?.length]);
+
   const loadInitialData = async () => {
     try {
       setLoading(true);
@@ -96,15 +182,15 @@ const CheckoutPageOptimized: React.FC = () => {
       // Recalcular carrito para asegurar que tiene los valores actualizados (ej: costo de envío)
       try {
         await cartService.recalculateCart();
-      } catch (recalcError) {
-        console.warn('⚠️ Error recalculando carrito, continuando de todas formas:', recalcError);
+      } catch {
+        // Recalcular es best-effort; seguimos con el carrito persistido.
       }
       
       // Cargar carrito
       const cartData = await cartService.getCart();
       if (!cartData || !cartData.productos || cartData.productos.length === 0) {
         showError('Tu carrito está vacío', 'Agrega productos antes de proceder al checkout');
-        navigate('/cart');
+        navigate('/carrito');
         return;
       }
       setCart(cartData);
@@ -119,8 +205,7 @@ const CheckoutPageOptimized: React.FC = () => {
         setSelectedAddress(defaultAddress._id);
       }
 
-    } catch (error) {
-      console.error('Error loading initial data:', error);
+    } catch {
       setError('Error al cargar los datos iniciales');
     } finally {
       setLoading(false);
@@ -198,24 +283,20 @@ const CheckoutPageOptimized: React.FC = () => {
         comentarios: comments
       };
 
-      console.log('🚀 Creating order with data:', orderData);
-
       // Crear la orden
-      const response = await orderService.createOrder(orderData);
-      
-      console.log('📦 Order service response:', response);
+      const response = await orderService.createOrder(orderData, {
+        idempotencyKey: getCheckoutIdempotencyKey()
+      });
       
       if (!response || !response._id) {
-        console.error('❌ Invalid order response:', response);
         throw new Error('Error al crear la orden: respuesta inválida del servidor');
       }
 
-      console.log('✅ Order created successfully:', response._id);
       return response._id;
 
-    } catch (error: any) {
-      console.error('❌ Error creating order:', error);
-      setError(error.message || 'Error al procesar la orden');
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : 'Error al procesar la orden';
+      setError(msg || 'Error al procesar la orden');
       return null;
     } finally {
       setProcessingPayment(false);
@@ -223,34 +304,30 @@ const CheckoutPageOptimized: React.FC = () => {
   };
 
   const handleWompiPayment = async () => {
+    if (paymentSubmitLock.current || processingPayment) {
+      return;
+    }
+    paymentSubmitLock.current = true;
     try {
-      console.log('🎯 Starting Wompi payment process...');
-      
-      // Validar monto mínimo para Wompi (1,500 COP)
       const minimumAmount = 1500;
       if (!cart?.total || cart.total < minimumAmount) {
         showError(
-          'Monto insuficiente', 
+          'Monto insuficiente',
           `El monto mínimo para pagos con Wompi es $${minimumAmount.toLocaleString()} COP. Tu carrito tiene $${(cart?.total || 0).toLocaleString()} COP.`
         );
         return;
       }
-      
-      // Primero crear la orden
+
       const orderId = await handleCreateOrder();
       if (!orderId) {
-        console.error('❌ No order ID received');
         return;
       }
 
-      console.log('✅ Order created, ID:', orderId);
       setProcessingPayment(true);
-      
-      // Obtener la dirección correcta
+
       let address: Address;
-      
+
       if (useNewAddress) {
-        // Usar ciudad personalizada si seleccionó "Otra"
         address = {
           ...newAddress,
           direccion: {
@@ -258,24 +335,17 @@ const CheckoutPageOptimized: React.FC = () => {
             ciudad: newAddress.direccion.ciudad === 'Otra' ? otraCiudad : newAddress.direccion.ciudad
           }
         };
-        console.log('📍 Using new address:', address);
       } else {
-        // Buscar la dirección seleccionada en el array de direcciones
-        const foundAddress = addresses.find(addr => addr._id === selectedAddress);
+        const foundAddress = addresses.find((addr) => addr._id === selectedAddress);
         if (!foundAddress) {
           throw new Error('No se ha seleccionado una dirección válida');
         }
         address = foundAddress;
-        console.log('📍 Using saved address:', address);
       }
 
-      // Validar que tenemos los datos mínimos
       if (!address.nombreDestinatario || !address.telefono || !address.direccion?.calle) {
         throw new Error('Los datos de la dirección están incompletos');
       }
-
-      console.log('💰 Cart total:', cart?.total);
-      console.log('👤 User data:', { email: user?.email, name: user?.nombre });
 
       const paymentData = {
         orderId: orderId,
@@ -285,7 +355,7 @@ const CheckoutPageOptimized: React.FC = () => {
           fullName: address.nombreDestinatario,
           email: user?.email || '',
           phoneNumber: address.telefono,
-          legalId: '12345678', // Placeholder - se puede extender el tipo User si se necesita
+          legalId: payerDocument.replace(/\D/g, ''),
           legalIdType: 'CC'
         },
         shippingAddress: {
@@ -296,49 +366,27 @@ const CheckoutPageOptimized: React.FC = () => {
           postalCode: address.direccion.codigoPostal || '110111'
         }
       };
-      
-      // Crear enlace de pago de Wompi
-      console.log('🔗 Creating Wompi payment link for order:', orderId);
-      console.log('📊 Payment data:', paymentData);
-      
+
       const paymentResult = await wompiService.createPaymentLink(paymentData);
-      
-      console.log('💳 Payment result received:', JSON.stringify(paymentResult, null, 2));
-      
+
       if (paymentResult.success && paymentResult.data?.paymentUrl) {
-        console.log('✅ Payment link created, redirecting to:', paymentResult.data.paymentUrl);
-        
-        // Limpiar carrito
         await cartService.clearCart();
-        
-        // Mostrar mensaje de éxito
-        showSuccess('Redirigiendo a Wompi', 'Te redirigiremos a la página de pago segura en unos momentos...');
-        
-        // Redirigir a Wompi después de un breve delay
-        setTimeout(() => {
+        sessionStorage.removeItem(CHECKOUT_DRAFT_KEY);
+        showSuccess('Redirigiendo a Wompi', 'Te redirigiremos a la página de pago segura en unos momentos…');
+        window.setTimeout(() => {
           window.location.href = paymentResult.data.paymentUrl;
-        }, 2000);
+        }, 1200);
       } else {
-        console.error('❌ Payment result error details:', JSON.stringify({
-          success: paymentResult.success,
-          error: paymentResult.error,
-          data: paymentResult.data,
-          message: paymentResult.message,
-          fullObject: paymentResult
-        }, null, 2));
-        
-        const errorMsg = paymentResult.error 
+        const errorMsg = paymentResult.error
           ? wompiService.getErrorMessage(paymentResult.error)
           : paymentResult.message || 'Error desconocido al crear enlace de pago';
-        
         setError(`Error al crear enlace de pago: ${errorMsg}`);
-        console.error('❌ Failed to create payment link:', paymentResult.error);
       }
-
-    } catch (error: any) {
-      console.error('💥 Exception in Wompi payment:', error);
-      setError(error.message || 'Error al procesar el pago con Wompi');
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : 'Error al procesar el pago con Wompi';
+      setError(msg);
     } finally {
+      paymentSubmitLock.current = false;
       setProcessingPayment(false);
     }
   };
@@ -357,8 +405,13 @@ const CheckoutPageOptimized: React.FC = () => {
 
   const handlePayment = () => {
     if (!validateForm()) return;
-    
-    // Todos los métodos de pago usan Wompi
+    const digits = payerDocument.replace(/\D/g, '');
+    if (digits.length < 6 || digits.length > 11) {
+      setPayerDocumentTouched(true);
+      setError('Indica un documento válido del pagador (6 a 11 dígitos) para continuar con Wompi.');
+      return;
+    }
+    setError('');
     handleWompiPayment();
   };
 
@@ -380,7 +433,7 @@ const CheckoutPageOptimized: React.FC = () => {
           <h2 className="text-2xl font-bold text-gray-900 mb-4">Carrito vacío</h2>
           <p className="text-gray-600 mb-6">No tienes productos en tu carrito</p>
           <button
-            onClick={() => navigate('/products')}
+            onClick={() => navigate('/productos')}
             className="btn-primary"
           >
             Ir a productos
@@ -391,49 +444,43 @@ const CheckoutPageOptimized: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-gray-50 py-6 pb-32 sm:py-8 sm:pb-36 lg:pb-8">
+      <Container className="max-w-6xl">
         {/* Header */}
-        <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">Finalizar Compra</h1>
-          <p className="text-gray-600 mt-2">Completa tu pedido de forma segura con Wompi</p>
-          <div className="mt-2 text-sm text-gray-500">
-            🔒 Pago 100% seguro • ✅ Certificado SSL • 💳 Múltiples métodos de pago
-          </div>
+        <div className="mb-8">
+          <h1 className="text-2xl sm:text-3xl font-semibold text-gray-900 tracking-tight">Checkout</h1>
+          <p className="text-gray-600 mt-1 text-sm sm:text-base">
+            Pago seguro con Wompi · {BRAND_NAME}
+          </p>
+          <p className="mt-2 text-xs text-gray-500">
+            Conexión cifrada. El resultado del pago se confirma en el servidor, no solo en el navegador.
+          </p>
         </div>
 
         {/* Progress Steps */}
         <div className="mb-8">
           <div className="flex items-center justify-center">
-            <div className="flex items-center space-x-4">
-              <div className={`flex items-center justify-center w-10 h-10 rounded-full ${
-                currentStep >= 1 ? 'bg-blue-600 text-white' : 'bg-gray-300 text-gray-500'
-              }`}>
-                {currentStep > 1 ? (
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
-                ) : (
-                  '1'
-                )}
+            <div className="flex items-center gap-2 sm:gap-4">
+              <div
+                className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-semibold sm:h-9 sm:w-9 sm:text-sm ${
+                  currentStep >= 1 ? 'bg-primary-600 text-white' : 'bg-gray-200 text-gray-500'
+                }`}
+              >
+                {currentStep > 1 ? <CheckIcon className="h-4 w-4 sm:h-5 sm:w-5" aria-hidden /> : '1'}
               </div>
-              <div className={`h-1 w-20 ${currentStep >= 2 ? 'bg-blue-600' : 'bg-gray-300'}`}></div>
-              <div className={`flex items-center justify-center w-10 h-10 rounded-full ${
-                currentStep >= 2 ? 'bg-blue-600 text-white' : 'bg-gray-300 text-gray-500'
-              }`}>
+              <div className={`h-px w-10 sm:w-16 ${currentStep >= 2 ? 'bg-primary-600' : 'bg-gray-200'}`} />
+              <div
+                className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-semibold sm:h-9 sm:w-9 sm:text-sm ${
+                  currentStep >= 2 ? 'bg-primary-600 text-white' : 'bg-gray-200 text-gray-500'
+                }`}
+              >
                 2
               </div>
             </div>
           </div>
-          <div className="flex justify-center mt-3">
-            <div className="flex space-x-20 text-sm font-medium">
-              <span className={currentStep >= 1 ? 'text-blue-600' : 'text-gray-500'}>
-                Dirección de entrega
-              </span>
-              <span className={currentStep >= 2 ? 'text-blue-600' : 'text-gray-500'}>
-                Método de pago
-              </span>
-            </div>
+          <div className="flex justify-center mt-3 gap-8 sm:gap-24 text-xs sm:text-sm font-medium text-gray-600">
+            <span className={currentStep >= 1 ? 'text-primary-700' : ''}>Entrega</span>
+            <span className={currentStep >= 2 ? 'text-primary-700' : ''}>Pago</span>
           </div>
         </div>
 
@@ -453,11 +500,10 @@ const CheckoutPageOptimized: React.FC = () => {
           </div>
         )}
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Formulario principal */}
-          <div className="lg:col-span-2">
-            <div className="bg-white shadow-sm rounded-lg p-6">
-              
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3 lg:items-start lg:gap-8">
+          <div className="order-2 min-w-0 lg:order-1 lg:col-span-2">
+            <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-soft sm:p-6">
+
               {/* Paso 1: Dirección de entrega */}
               {currentStep === 1 && (
                 <div>
@@ -499,12 +545,25 @@ const CheckoutPageOptimized: React.FC = () => {
                                     </span>
                                   )}
                                 </div>
-                                <p className="text-sm text-gray-600 mb-1">📞 {address.telefono}</p>
-                                <p className="text-sm text-gray-600">
-                                  📍 {address.direccion.calle}, {address.direccion.ciudad}, {address.direccion.departamento}
+                                <p className="mb-1 flex items-center gap-1.5 text-sm text-gray-600">
+                                  <PhoneIcon className="h-4 w-4 shrink-0 text-gray-400" aria-hidden />
+                                  {address.telefono}
+                                </p>
+                                <p className="flex items-start gap-1.5 text-sm text-gray-600">
+                                  <MapPinIcon className="mt-0.5 h-4 w-4 shrink-0 text-gray-400" aria-hidden />
+                                  <span>
+                                    {address.direccion.calle}, {address.direccion.ciudad},{' '}
+                                    {address.direccion.departamento}
+                                  </span>
                                 </p>
                                 {address.instruccionesEntrega && (
-                                  <p className="text-sm text-gray-500 mt-2 italic">💬 {address.instruccionesEntrega}</p>
+                                  <p className="mt-2 flex items-start gap-1.5 text-sm italic text-gray-500">
+                                    <ChatBubbleBottomCenterTextIcon
+                                      className="mt-0.5 h-4 w-4 shrink-0 text-gray-400"
+                                      aria-hidden
+                                    />
+                                    {address.instruccionesEntrega}
+                                  </p>
                                 )}
                               </div>
                               {selectedAddress === address._id && !useNewAddress && (
@@ -531,7 +590,7 @@ const CheckoutPageOptimized: React.FC = () => {
                         className="rounded border-gray-300 text-blue-600 shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50"
                       />
                       <span className="ml-3 text-gray-900 font-medium">
-                        ➕ Usar una nueva dirección
+                        Usar una nueva dirección
                       </span>
                     </label>
                   </div>
@@ -684,7 +743,7 @@ const CheckoutPageOptimized: React.FC = () => {
                         <a href="/privacidad" target="_blank" className="text-blue-600 hover:underline font-medium">
                           política de privacidad
                         </a>{' '}
-                        de AndinoExpress
+                        de {BRAND_NAME}
                       </span>
                     </label>
                   </div>
@@ -728,102 +787,41 @@ const CheckoutPageOptimized: React.FC = () => {
                     </button>
                   </div>
 
-                  {/* Opciones de pago con Wompi */}
+                  <div className="mb-6 rounded-xl border border-gray-200 bg-gray-50/80 p-4">
+                    <label className="block text-sm font-medium text-gray-800 mb-2" htmlFor="payer-document">
+                      Documento del pagador (cédula) <span className="text-red-500">*</span>
+                    </label>
+                    <Input
+                      id="payer-document"
+                      inputMode="numeric"
+                      autoComplete="off"
+                      placeholder="Solo números, 6 a 11 dígitos"
+                      value={payerDocument}
+                      onChange={(e) => setPayerDocument(e.target.value.replace(/\D/g, ''))}
+                      onBlur={() => setPayerDocumentTouched(true)}
+                      className={payerDocumentTouched && payerDocument.replace(/\D/g, '').length < 6 ? 'border-red-300' : ''}
+                    />
+                    <p className="mt-1.5 text-xs text-gray-500">
+                      Wompi lo requiere para antifraude. No almacenamos datos de tarjeta.
+                    </p>
+                  </div>
+
                   <div className="space-y-4 mb-6">
-                    {/* Enlace de pago Wompi - Todos los métodos */}
-                    <div className="p-6 border-2 border-blue-500 bg-gradient-to-r from-blue-50 to-blue-100 rounded-xl shadow-lg">
-                      <div className="flex items-center justify-between">
-                        <div className="flex-1">
-                          <div className="flex items-center mb-2">
-                            <h3 className="text-xl font-bold text-gray-900">💳 Wompi</h3>
-                            <span className="ml-3 inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-green-500 text-white animate-pulse">
-                              ⭐ Recomendado
-                            </span>
-                          </div>
-                          <p className="text-sm text-gray-700 font-medium mb-3">
-                            Todos los métodos de pago disponibles
-                          </p>
-                          <p className="text-sm text-gray-600 mb-4">
-                            PSE, Nequi, Daviplata, tarjetas de crédito/débito, Efecty y más opciones seguras
-                          </p>
-                          <div className="flex items-center space-x-3 text-sm">
-                            <span className="flex items-center text-blue-700 font-medium">
-                              <svg className="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
-                                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                              </svg>
-                              🎯 Múltiples opciones
-                            </span>
-                            <span className="flex items-center text-purple-700 font-medium">
-                              <svg className="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
-                                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                              </svg>
-                              🚀 Rápido y seguro
-                            </span>
-                          </div>
-                        </div>
-                        <div className="flex-shrink-0 ml-4">
-                          <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center shadow-lg">
-                            <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                            </svg>
-                          </div>
-                        </div>
-                      </div>
+                    <div className="rounded-xl border border-primary-200 bg-white p-5 shadow-soft">
+                      <h3 className="text-base font-semibold text-gray-900">Wompi</h3>
+                      <p className="text-sm text-gray-600 mt-1">
+                        PSE, Nequi, tarjetas y demás medios habilitados por Wompi en Colombia.
+                      </p>
                     </div>
                   </div>
 
-                  {/* Información de seguridad */}
-                  <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
-                    <div className="flex">
-                      <div className="flex-shrink-0">
-                        <svg className="h-5 w-5 text-green-400" fill="currentColor" viewBox="0 0 20 20">
-                          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                        </svg>
-                      </div>
-                      <div className="ml-3">
-                        <h3 className="text-sm font-medium text-green-800">
-                          🔒 Pago 100% seguro con Wompi
-                        </h3>
-                        <div className="mt-2 text-sm text-green-700 space-y-1">
-                          <p>✅ Conexión encriptada SSL/TLS de nivel bancario</p>
-                          <p>✅ No almacenamos datos de tarjetas en nuestros servidores</p>
-                          <p>✅ Procesamiento PCI DSS certificado</p>
-                          <p>✅ Certificado por la Superintendencia Financiera de Colombia</p>
-                          <p>✅ Monitoreo 24/7 contra fraudes</p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Información del proceso */}
-                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-                    <div className="flex items-start gap-3">
-                      <svg className="h-5 w-5 text-blue-600 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                      <div>
-                        <h4 className="font-medium text-blue-900 mb-2">¿Cómo funciona el proceso de pago?</h4>
-                        <div className="text-sm text-blue-800 space-y-1 mb-3">
-                          <p>1️⃣ Al hacer clic en "Pagar", serás redirigido a la plataforma segura de Wompi</p>
-                          <p>2️⃣ Elige tu método de pago preferido (PSE, Nequi, tarjeta, etc.)</p>
-                          <p>3️⃣ Completa el pago siguiendo las instrucciones</p>
-                          <p>4️⃣ Regresarás automáticamente con la confirmación</p>
-                          <p>5️⃣ Recibirás tu comprobante por email</p>
-                        </div>
-                        <div className="bg-green-50 border border-green-200 rounded p-3 mt-3">
-                          <p className="font-semibold text-green-900 mb-2">🔒 Pago Seguro con Wompi</p>
-                          <div className="text-xs text-green-800 space-y-1">
-                            <p><strong>✅ Métodos de pago disponibles:</strong></p>
-                            <p>• 💳 Tarjetas de crédito y débito (Visa, Mastercard)</p>
-                            <p>• 🏦 PSE - Transferencia bancaria</p>
-                            <p>• 📱 Nequi - Pago desde tu celular</p>
-                            <p className="text-xs text-green-700 mt-2 italic font-semibold">
-                              🔐 Todos tus datos están protegidos con encriptación de última generación.
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
+                  <div className="rounded-lg border border-gray-200 bg-white p-4 mb-6 text-sm text-gray-600 space-y-2">
+                    <p className="font-medium text-gray-800">Proceso</p>
+                    <ol className="list-decimal list-inside space-y-1 text-sm">
+                      <li>Al pagar, serás redirigido a Wompi.</li>
+                      <li>Al volver, verificamos el estado en el servidor (no solo la URL).</li>
+                      <li>Recibirás el detalle en &quot;Mis pedidos&quot;.</li>
+                    </ol>
                   </div>
 
                   {/* Botón de pago */}
@@ -859,7 +857,7 @@ const CheckoutPageOptimized: React.FC = () => {
                         <div className="flex items-center gap-3">
                           <div className="animate-spin rounded-full h-6 w-6 border-2 border-blue-600 border-t-transparent"></div>
                           <div>
-                            <p className="text-blue-800 font-medium">🔄 Procesando tu pago...</p>
+                            <p className="text-blue-800 font-medium">Procesando tu pago...</p>
                             <p className="text-blue-600 text-sm">
                               Te redirigiremos a la plataforma de pago segura de Wompi en unos momentos. 
                               No cierres esta ventana.
@@ -875,10 +873,10 @@ const CheckoutPageOptimized: React.FC = () => {
           </div>
 
           {/* Resumen del pedido */}
-          <div className="lg:col-span-1">
-            <div className="bg-white shadow-sm rounded-lg p-6 sticky top-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-                <svg className="w-5 h-5 mr-2 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="order-1 lg:order-2 lg:col-span-1">
+            <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-soft sm:p-6 lg:sticky lg:top-24 lg:z-10 lg:self-start">
+              <h3 className="mb-4 flex items-center gap-2 text-base font-semibold text-gray-900">
+                <svg className="h-5 w-5 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
                 </svg>
                 Resumen del pedido
@@ -940,8 +938,14 @@ const CheckoutPageOptimized: React.FC = () => {
                   {useNewAddress ? (
                     <div className="text-sm text-gray-600 space-y-1">
                       <p className="font-medium">{newAddress.nombreDestinatario}</p>
-                      <p>📞 {newAddress.telefono}</p>
-                      <p>📍 {newAddress.direccion.calle}</p>
+                      <p className="flex items-center gap-1.5 text-sm text-gray-600">
+                        <PhoneIcon className="h-4 w-4 text-gray-400" aria-hidden />
+                        {newAddress.telefono}
+                      </p>
+                      <p className="flex items-start gap-1.5 text-sm text-gray-600">
+                        <MapPinIcon className="mt-0.5 h-4 w-4 shrink-0 text-gray-400" aria-hidden />
+                        {newAddress.direccion.calle}
+                      </p>
                       <p>{newAddress.direccion.ciudad}, {newAddress.direccion.departamento}</p>
                     </div>
                   ) : (
@@ -952,8 +956,14 @@ const CheckoutPageOptimized: React.FC = () => {
                           return (
                             <>
                               <p className="font-medium">{addr.nombreDestinatario}</p>
-                              <p>📞 {addr.telefono}</p>
-                              <p>📍 {addr.direccion.calle}</p>
+                              <p className="flex items-center gap-1.5 text-sm text-gray-600">
+                                <PhoneIcon className="h-4 w-4 text-gray-400" aria-hidden />
+                                {addr.telefono}
+                              </p>
+                              <p className="flex items-start gap-1.5 text-sm text-gray-600">
+                                <MapPinIcon className="mt-0.5 h-4 w-4 shrink-0 text-gray-400" aria-hidden />
+                                {addr.direccion.calle}
+                              </p>
                               <p>{addr.direccion.ciudad}, {addr.direccion.departamento}</p>
                             </>
                           );
@@ -973,9 +983,7 @@ const CheckoutPageOptimized: React.FC = () => {
                     </svg>
                     Método de pago:
                   </h4>
-                  <div className="text-sm text-gray-600">
-                    💳 Wompi - Todos los métodos disponibles
-                  </div>
+                  <div className="text-sm text-gray-600">Wompi (todos los medios habilitados)</div>
                 </div>
               )}
 
@@ -994,7 +1002,25 @@ const CheckoutPageOptimized: React.FC = () => {
             </div>
           </div>
         </div>
-      </div>
+
+        <div className="lg:hidden fixed inset-x-0 bottom-0 z-dropdown border-t border-gray-200 bg-white/95 backdrop-blur-sm px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom,0px))] shadow-[0_-4px_24px_rgba(0,0,0,0.06)]">
+          <div className="max-w-6xl mx-auto flex items-center justify-between gap-3">
+            <div>
+              <p className="text-[11px] uppercase tracking-wide text-gray-500">Total</p>
+              <p className="text-lg font-semibold text-gray-900">${cart.total.toLocaleString('es-CO')}</p>
+            </div>
+            {currentStep === 1 ? (
+              <Button size="lg" disabled={!acceptedTerms} onClick={handleNextStep}>
+                Continuar
+              </Button>
+            ) : (
+              <Button size="lg" variant="primary" loading={processingPayment} onClick={handlePayment}>
+                Pagar
+              </Button>
+            )}
+          </div>
+        </div>
+      </Container>
     </div>
   );
 };

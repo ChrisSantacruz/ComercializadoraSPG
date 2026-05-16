@@ -51,84 +51,39 @@ class WompiService {
   // Crear enlace de pago
   async createPaymentLink(data: PaymentLinkData): Promise<WompiResponse> {
     try {
-      console.log('🔗 WompiService: Creating payment link for order:', data.orderId);
-      console.log('📦 WompiService: Full payment data:', JSON.stringify(data, null, 2));
-      
-      // Verificar token de autenticación
-      const token = localStorage.getItem('auth-storage');
-      console.log('🔐 WompiService: Auth token exists:', !!token);
-      
-      if (token) {
-        try {
-          const authData = JSON.parse(token);
-          console.log('🔐 WompiService: Auth data structure:', {
-            hasState: !!authData.state,
-            hasToken: !!authData.state?.token,
-            tokenStart: authData.state?.token?.substring(0, 20)
-          });
-        } catch (e) {
-          console.error('🔐 WompiService: Error parsing auth token:', e);
-        }
-      }
-      
-      console.log('📡 WompiService: Sending request to /wompi/payment-link');
       const response = await api.post('/wompi/payment-link', data);
-      
-      console.log('✅ WompiService: Raw response received:', {
-        status: response.status,
-        statusText: response.statusText,
-        headers: response.headers,
-        data: response.data
-      });
-      
-      // Verificar estructura de respuesta
+
       if (response.data && typeof response.data === 'object') {
-        console.log('✅ WompiService: Response structure:', {
-          hasSuccess: 'success' in response.data,
-          hasExito: 'exito' in response.data,
-          hasData: 'data' in response.data,
-          hasDatos: 'datos' in response.data,
-          successValue: response.data.success,
-          exitoValue: response.data.exito
-        });
-        
-        // Manejar tanto formato nuevo como viejo
         if (response.data.exito === true) {
           return {
             success: true,
             data: response.data.datos,
             message: response.data.mensaje
           };
-        } else if (response.data.success === true) {
-          return response.data;
-        } else {
-          return {
-            success: false,
-            error: response.data.error,
-            message: response.data.mensaje || response.data.message
-          };
         }
+        if (response.data.success === true) {
+          return response.data as WompiResponse;
+        }
+        return {
+          success: false,
+          error: response.data.error,
+          message: response.data.mensaje || response.data.message
+        };
       }
-      
+
       return response.data;
-    } catch (error: any) {
-      console.error('❌ WompiService: Detailed error:', {
-        status: error.response?.status,
-        statusText: error.response?.statusText,
-        data: error.response?.data,
-        message: error.message,
-        url: error.config?.url,
-        method: error.config?.method,
-        headers: error.config?.headers
-      });
-      
+    } catch (error: unknown) {
+      const ax = error as { response?: { data?: unknown }; message?: string };
       return {
         success: false,
-        error: error.response?.data?.error || {
+        error: ax.response?.data || {
           type: 'NETWORK_ERROR',
-          message: error.message || 'Error de conexión'
+          message: ax.message || 'Error de conexión'
         },
-        message: error.response?.data?.mensaje || error.response?.data?.message || error.message
+        message:
+          (ax.response?.data as { mensaje?: string })?.mensaje ||
+          (ax.response?.data as { message?: string })?.message ||
+          (typeof ax.message === 'string' ? ax.message : undefined)
       };
     }
   }
@@ -139,7 +94,6 @@ class WompiService {
       const response = await api.get(`/wompi/transaction/${transactionId}`);
       return response.data;
     } catch (error: any) {
-      console.error('Error getting transaction status:', error);
       return {
         success: false,
         error: error.response?.data || error.message
@@ -153,7 +107,6 @@ class WompiService {
       const response = await api.get('/wompi/acceptance-token');
       return response.data;
     } catch (error: any) {
-      console.error('Error getting acceptance token:', error);
       return {
         success: false,
         error: error.response?.data || error.message
@@ -167,7 +120,6 @@ class WompiService {
       const response = await api.post('/wompi/tokenize-card', cardData);
       return response.data;
     } catch (error: any) {
-      console.error('Error tokenizing card:', error);
       return {
         success: false,
         error: error.response?.data || error.message
@@ -181,7 +133,6 @@ class WompiService {
       const response = await api.post('/wompi/card-transaction', data);
       return response.data;
     } catch (error: any) {
-      console.error('Error creating card transaction:', error);
       return {
         success: false,
         error: error.response?.data || error.message
@@ -195,7 +146,6 @@ class WompiService {
       const response = await api.get('/wompi/payment-methods');
       return response.data;
     } catch (error: any) {
-      console.error('Error getting payment methods:', error);
       return {
         success: false,
         error: error.response?.data || error.message
@@ -395,4 +345,5 @@ class WompiService {
   }
 }
 
-export default new WompiService();
+const wompiService = new WompiService();
+export default wompiService;

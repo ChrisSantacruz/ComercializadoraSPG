@@ -5,6 +5,16 @@ const { protect } = require('../middlewares/auth');
 const { validarRegistroUsuario, validarLoginUsuario } = require('../middlewares/validation');
 const passport = require('passport');
 
+// @route   POST /api/auth/refresh
+// @desc    Rotate access token using refresh token
+// @access  Public
+router.post('/refresh', authController.refrescarSesion);
+
+// @route   POST /api/auth/oauth/exchange
+// @desc    Exchange one-time OAuth handoff code for tokens (no JWT in browser URL)
+// @access  Public
+router.post('/oauth/exchange', authController.intercambiarCodigoOAuth);
+
 // @route   POST /api/auth/register
 // @desc    Register user
 // @access  Public

@@ -1,7 +1,7 @@
 // Import the functions you need from the SDKs you need
 import { initializeApp } from "firebase/app";
 import { getAnalytics } from "firebase/analytics";
-import { getAuth, GoogleAuthProvider, FacebookAuthProvider, signInWithPopup, UserCredential } from "firebase/auth";
+import { getAuth, GoogleAuthProvider, signInWithPopup, UserCredential } from "firebase/auth";
 
 // Your web app's Firebase configuration
 // For Firebase JS SDK v7.20.0 and later, measurementId is optional
@@ -26,19 +26,10 @@ googleProvider.setCustomParameters({
   prompt: 'select_account'
 });
 
-const facebookProvider = new FacebookAuthProvider();
-facebookProvider.setCustomParameters({
-  display: 'popup'
-});
-
 // Auth functions
 export const signInWithGoogle = async (): Promise<UserCredential> => {
   return await signInWithPopup(auth, googleProvider);
 };
 
-export const signInWithFacebook = async (): Promise<UserCredential> => {
-  return await signInWithPopup(auth, facebookProvider);
-};
-
-export { auth, analytics, googleProvider, facebookProvider };
+export { auth, analytics, googleProvider };
 export default app;

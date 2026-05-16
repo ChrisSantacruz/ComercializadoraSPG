@@ -12,6 +12,7 @@
 
 html {
   font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  overflow-x: clip;
 }
 
 /* Tipografías principales */
@@ -33,6 +34,19 @@ body {
   color: #111827;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  overflow-x: clip;
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+@keyframes toast-progress {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
 }
 
 /* Botones básicos */
@@ -74,12 +88,7 @@ body {
   border: 1px solid #f3f4f6;
 }
 
-/* Utilidades básicas */
-.container {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 0 16px;
-}
+/* .container override removed — use components/ui/Container or max-w-7xl (DEC-RESP-002) */
 
 .text-center {
   text-align: center;
@@ -259,4 +268,28 @@ body {
 
 .bg-gradient-turquesa {
   background: linear-gradient(135deg, #0d8e76 0%, #0b7a64 100%);
+}
+
+/* Focus + motion + hydration-stable defaults (DEC-FORM-002, DEC-PERF-004) */
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+:focus-visible {
+  outline: 2px solid #0d8e76;
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

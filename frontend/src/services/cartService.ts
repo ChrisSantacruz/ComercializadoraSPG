@@ -25,8 +25,7 @@ export const cartService = {
         cantidad,
       });
       return handleApiResponse<Cart>(response);
-    } catch (error) {
-      console.warn('🔄 Intentando ruta alternativa para actualizar cantidad...');
+    } catch (primary: unknown) {
       try {
         // Fallback a la ruta original
         const response = await api.put('/cart/update', {
@@ -34,9 +33,8 @@ export const cartService = {
           cantidad,
         });
         return handleApiResponse<Cart>(response);
-      } catch (fallbackError) {
-        console.error('❌ Ambas rutas fallaron:', error, fallbackError);
-        throw error;
+      } catch {
+        throw primary;
       }
     }
   },

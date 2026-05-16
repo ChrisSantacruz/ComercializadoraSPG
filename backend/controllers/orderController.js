@@ -14,8 +14,20 @@ const mongoose = require('mongoose');
 // @access  Private
 const crearPedido = async (req, res) => {
   try {
-    const { productos, direccionEntrega, metodoPago } = req.body;
+    const { productos, direccionEntrega, metodoPago, idempotencyKey: bodyIdem } = req.body;
     const clienteId = req.usuario.id;
+    const idempotencyKey = (req.get('Idempotency-Key') || bodyIdem || '').trim().slice(0, 200);
+
+    if (idempotencyKey) {
+      const existente = await Order.findOne({ idempotencyKey, cliente: clienteId }).lean();
+      if (existente) {
+        return res.status(200).json({
+          exito: true,
+          mensaje: 'Pedido ya registrado (idempotencia)',
+          datos: existente
+        });
+      }
+    }
 
     // Si direccionEntrega es un string (ID), buscar la dirección
     let direccionCompleta = direccionEntrega;
@@ -113,7 +125,25 @@ const crearPedido = async (req, res) => {
       }
     });
 
-    await nuevoPedido.save();
+    if (idempotencyKey) {
+      nuevoPedido.idempotencyKey = idempotencyKey;
+    }
+
+    try {
+      await nuevoPedido.save();
+    } catch (saveErr) {
+      if (saveErr && saveErr.code === 11000 && idempotencyKey) {
+        const existente = await Order.findOne({ idempotencyKey, cliente: clienteId }).lean();
+        if (existente) {
+          return res.status(200).json({
+            exito: true,
+            mensaje: 'Pedido ya registrado (idempotencia)',
+            datos: existente
+          });
+        }
+      }
+      throw saveErr;
+    }
 
     // Notificar a los comerciantes sobre el nuevo pedido y actualizar estadísticas
     try {

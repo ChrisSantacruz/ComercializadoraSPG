@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuthStore } from '../../stores/authStore';
 import LoadingSpinner from '../ui/LoadingSpinner';
+import { userNotificationsService } from '../../services/userNotificationsService';
 
 interface Notification {
   _id: string;
@@ -35,107 +36,20 @@ const NotificationCenter: React.FC = () => {
   const loadNotifications = async () => {
     try {
       setLoading(true);
-      const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5001';
-      
-      // Obtener token del authStore (disponible desde useAuthStore)
-      const authStorage = localStorage.getItem('auth-storage');
-      let token = null;
-      
-      if (authStorage) {
-        try {
-          const authData = JSON.parse(authStorage);
-          token = authData.state?.token;
-        } catch (error) {
-          console.error('❌ Error parseando auth-storage:', error);
-        }
-      }
-      
-      console.log('🔍 Cargando notificaciones...');
-      console.log('🔍 API URL:', apiUrl);
-      console.log('🔍 Token presente:', !!token);
-      
+      const token = useAuthStore.getState().token;
       if (!token) {
-        console.error('❌ No hay token de autenticación');
-        console.log('💡 Usuario no autenticado, no se pueden cargar notificaciones');
-        setLoading(false);
+        setNotifications([]);
+        setUnreadCount(0);
         return;
       }
-      
-      console.log('🔑 Token a enviar:', token ? token.substring(0, 20) + '...' : 'NO TOKEN');
-      
-      const response = await fetch(`${apiUrl}/api/notifications/user`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      });
-      
-      console.log('📡 Respuesta de notificaciones:', response.status, response.statusText);
-      console.log('📡 Headers de respuesta:', Object.fromEntries(response.headers.entries()));
-      
-      if (response.ok) {
-        const data = await response.json();
-        console.log('✅ Notificaciones cargadas:', data);
-        console.log('📊 Estructura de datos:', {
-          exito: data.exito,
-          mensaje: data.mensaje,
-          datos: data.datos,
-          notifications: data.notifications,
-          unreadCount: data.unreadCount,
-          total: data.total,
-          success: data.success
-        });
-        
-        // Manejar diferentes estructuras de respuesta
-        let notifications = [];
-        let unreadCount = 0;
-        
-        // Estructura del backend: { exito: true, datos: { notifications: [...], unreadCount: 6 } }
-        if (data.datos && data.datos.notifications && Array.isArray(data.datos.notifications)) {
-          notifications = data.datos.notifications;
-          unreadCount = data.datos.unreadCount || 0;
-        }
-        // Estructura alternativa: { notifications: [...], unreadCount: 6 }
-        else if (data.notifications && Array.isArray(data.notifications)) {
-          notifications = data.notifications;
-          unreadCount = data.unreadCount || 0;
-        }
-        // Estructura directa: [...]
-        else if (Array.isArray(data)) {
-          notifications = data;
-          unreadCount = notifications.filter((n: any) => n.estado === 'no_leida').length;
-        }
-        // Estructura con data: { data: [...] }
-        else if (data.data && Array.isArray(data.data)) {
-          notifications = data.data;
-          unreadCount = data.unreadCount || notifications.filter((n: any) => n.estado === 'no_leida').length;
-        }
-        // Fallback: buscar en cualquier propiedad que contenga array
-        else {
-          const possibleArrays = Object.values(data).filter(val => Array.isArray(val));
-          if (possibleArrays.length > 0) {
-            notifications = possibleArrays[0] as any[];
-            unreadCount = notifications.filter((n: any) => n.estado === 'no_leida').length;
-          }
-        }
-        
-        console.log('📋 Notificaciones procesadas:', notifications.length);
-        console.log('🔢 No leídas:', unreadCount);
-        
-        setNotifications(notifications);
-        setUnreadCount(unreadCount);
-      } else if (response.status === 401) {
-        console.error('❌ Error 401: Token no válido o expirado');
-        // Limpiar tokens inválidos
-        localStorage.removeItem('token');
-        localStorage.removeItem('auth-storage');
-        // Redirigir al login
-        window.location.href = '/login';
-      } else {
-        console.error('❌ Error cargando notificaciones:', response.status, response.statusText);
-      }
-    } catch (error) {
-      console.error('❌ Error cargando notificaciones:', error);
+
+      const data = await userNotificationsService.list();
+      const list = data.notifications ?? [];
+      setNotifications(Array.isArray(list) ? list : []);
+      setUnreadCount(typeof data.unreadCount === 'number' ? data.unreadCount : 0);
+    } catch {
+      setNotifications([]);
+      setUnreadCount(0);
     } finally {
       setLoading(false);
     }
@@ -143,53 +57,16 @@ const NotificationCenter: React.FC = () => {
 
   const markAsRead = async (notificationId: string) => {
     try {
-      const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5001';
-      
-      // Obtener token del sistema de autenticación principal
-      let token = null;
-      const authStorage = localStorage.getItem('auth-storage');
-      
-      if (authStorage) {
-        try {
-          const authData = JSON.parse(authStorage);
-          token = authData.state?.token;
-        } catch (error) {
-          console.error('❌ Error parseando auth-storage:', error);
-        }
-      }
-      
-      // Fallback: buscar token directo
-      if (!token) {
-        token = localStorage.getItem('token');
-      }
-      
-      if (!token) {
-        console.error('❌ No hay token para marcar como leída');
-        return;
-      }
-      
-      const response = await fetch(`${apiUrl}/api/notifications/${notificationId}/read`, {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      });
-      
-      if (response.ok) {
-        setNotifications(prev => 
-          prev.map(notif => 
-            notif._id === notificationId 
-              ? { ...notif, estado: 'leida' }
-              : notif
-          )
-        );
-        setUnreadCount(prev => Math.max(0, prev - 1));
-      } else {
-        console.error('❌ Error marcando notificación como leída:', response.status, response.statusText);
-      }
-    } catch (error) {
-      console.error('❌ Error marcando notificación como leída:', error);
+      if (!useAuthStore.getState().token) return;
+      await userNotificationsService.markRead(notificationId);
+      setNotifications((prev) =>
+        prev.map((notif) =>
+          notif._id === notificationId ? { ...notif, estado: 'leida' as const } : notif,
+        ),
+      );
+      setUnreadCount((prev) => Math.max(0, prev - 1));
+    } catch {
+      void loadNotifications();
     }
   };
 

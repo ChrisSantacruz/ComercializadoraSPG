@@ -1,169 +1,126 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import analyticsService, { AnalyticsData } from '../../services/analyticsService';
-import orderService from '../../services/orderService';
-import { productService } from '../../services/productService';
-import reviewService from '../../services/reviewService';
-import LoadingSpinner from '../../components/ui/LoadingSpinner';
+import React, { useState } from 'react';
+import {
+  CurrencyDollarIcon,
+  TruckIcon,
+  CubeIcon,
+  CheckBadgeIcon,
+  UsersIcon,
+  ShoppingBagIcon,
+  StarIcon,
+} from '@heroicons/react/24/outline';
+import { useMerchantAnalyticsQuery } from '../../lib/query/hooks/useMerchantQuery';
+import { MerchantDashboardSkeleton } from '../../components/merchant/MerchantDashboardSkeleton';
+import { ErrorState } from '../../components/ui/ErrorState';
+import { EmptyState } from '../../components/ui/EmptyState';
 import { getFirstImageUrl } from '../../utils/imageUtils';
+import { safeMoney } from '../../lib/safeNumeric';
 
-const MerchantAnalytics: React.FC = () => {
-  const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [selectedPeriod, setSelectedPeriod] = useState('30d');
+const PERIODS = [
+  { value: '7d', label: '7 días' },
+  { value: '30d', label: '30 días' },
+  { value: '90d', label: '90 días' },
+] as const;
 
-  const loadAnalytics = useCallback(async () => {
-    try {
-      setLoading(true);
-      console.log('📊 Cargando analytics del comerciante...');
-
-      // Usar el servicio de analytics del comerciante
-      const analyticsData = await analyticsService.getMerchantAnalytics(selectedPeriod);
-      console.log('✅ Analytics cargados exitosamente:', analyticsData);
-      setAnalytics(analyticsData);
-
-    } catch (error: any) {
-      console.error('❌ Error cargando analytics:', error);
-      
-      // Fallback a datos básicos si todo falla
-      const fallbackData = {
-        totalIngresos: 0,
-        ingresosDelMes: 0,
-        ingresosMesAnterior: 0,
-        porcentajeCambio: 0,
-        ventasDelMes: 0,
-        ventasTotales: 0,
-        totalProductos: 0,
-        productosActivos: 0,
-        productosAgotados: 0,
-        productosMasVendidos: [],
-        pedidosTotales: 0,
-        pedidosDelMes: 0,
-        pedidosEnTransito: 0,
-        pedidosEntregados: 0,
-        tasaConfirmacion: 0,
-        clientesUnicos: 0,
-        totalReseñas: 0,
-        calificacionPromedio: 0,
-        distribucionCalificaciones: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 },
-        reseñasRecientes: [],
-        ventasPorDia: [],
-        pedidosPorEstado: []
-      };
-      
-      console.log('🔄 Usando datos de fallback básicos:', fallbackData);
-      setAnalytics(fallbackData);
-    } finally {
-      setLoading(false);
-    }
-  }, [selectedPeriod]);
-
-  useEffect(() => {
-    loadAnalytics();
-  }, [loadAnalytics]);
-
-  // Agregar intervalo de actualización automática
-  useEffect(() => {
-    const interval = setInterval(() => {
-      loadAnalytics();
-    }, 60000); // Actualizar cada 60 segundos
-
-    return () => clearInterval(interval);
-  }, [loadAnalytics]);
-
-  // Componente de métrica
-  const MetricCard: React.FC<{
-    title: string;
-    value: string | number;
-    change?: string;
-    changeType?: 'positive' | 'negative' | 'neutral';
-    icon: string;
-    color: string;
-  }> = ({ title, value, change, changeType = 'neutral', icon, color }) => (
-    <div className={`bg-white rounded-xl shadow-md p-6 border-l-4 ${color}`}>
-      <div className="flex items-center justify-between">
+function MetricCard({
+  title,
+  value,
+  change,
+  changeType = 'neutral',
+  icon: Icon,
+}: {
+  title: string;
+  value: string | number;
+  change?: string;
+  changeType?: 'positive' | 'negative' | 'neutral';
+  icon: React.ComponentType<{ className?: string }>;
+}) {
+  return (
+    <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+      <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-sm font-medium text-gray-600">{title}</p>
-          <p className="text-2xl font-bold text-gray-900">{value}</p>
-          {change && (
-            <p className={`text-sm ${
-              changeType === 'positive' ? 'text-green-600' : 
-              changeType === 'negative' ? 'text-red-600' : 'text-gray-600'
-            }`}>
+          <p className="mt-1 text-2xl font-bold text-gray-900 tabular-nums">{value}</p>
+          {change ? (
+            <p
+              className={`mt-1 text-xs ${
+                changeType === 'positive'
+                  ? 'text-success-700'
+                  : changeType === 'negative'
+                    ? 'text-error-700'
+                    : 'text-gray-500'
+              }`}
+            >
               {change}
             </p>
-          )}
+          ) : null}
         </div>
-        <div className="text-3xl">{icon}</div>
+        <Icon className="h-8 w-8 shrink-0 text-primary-500" aria-hidden />
       </div>
     </div>
   );
+}
 
-  // Componente de gráfica simple
-  const SimpleChart: React.FC<{
-    title: string;
-    data: Array<{ fecha: string; ventas: number; ingresos: number }>;
-  }> = ({ title, data }) => (
-    <div className="bg-white rounded-xl shadow-md p-6">
-      <h3 className="text-lg font-semibold text-gray-900 mb-4">{title}</h3>
-      <div className="space-y-3">
-        {data.map((item, index) => (
-          <div key={index} className="flex items-center justify-between">
-            <span className="text-sm text-gray-600">{item.fecha}</span>
-            <div className="flex items-center space-x-4">
-              <span className="text-sm font-medium text-blue-600">{item.ventas} ventas</span>
-              <span className="text-sm font-medium text-green-600">
-                ${item.ingresos.toLocaleString('es-CO')}
-              </span>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
+const MerchantAnalytics: React.FC = () => {
+  const [selectedPeriod, setSelectedPeriod] = useState<string>('30d');
+  const { data: analytics, isLoading, isError, error, refetch, isFetching } =
+    useMerchantAnalyticsQuery(selectedPeriod);
 
-  if (loading) {
+  if (isLoading && !analytics) {
     return (
-      <div className="container mx-auto px-4 py-8">
-        <div className="flex items-center justify-center h-64">
-          <LoadingSpinner size="xl" />
-        </div>
+      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
+        <MerchantDashboardSkeleton />
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
+        <ErrorState
+          title="No se pudieron cargar las estadísticas"
+          message={error instanceof Error ? error.message : 'Error de red'}
+          onRetry={() => void refetch()}
+        />
       </div>
     );
   }
 
   if (!analytics) {
     return (
-      <div className="container mx-auto px-4 py-8">
-        <div className="text-center py-12">
-          <div className="text-6xl mb-4">📊</div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">Dashboard Comerciante</h2>
-          <p className="text-gray-600">Gestiona tu negocio y analiza tus ventas</p>
-          <p className="text-red-500 mt-4">No se pudieron cargar las estadísticas</p>
-        </div>
-      </div>
+      <EmptyState
+        title="Sin datos de analytics"
+        description="Cuando registres ventas, verás tendencias aquí."
+        actionLabel="Reintentar"
+        onAction={() => void refetch()}
+      />
     );
   }
 
+  const avgDaily =
+    analytics.ventasTotales > 0
+      ? Math.round(analytics.totalIngresos / Math.max(analytics.ventasTotales, 1))
+      : 0;
+
   return (
-    <div className="container mx-auto px-4 py-8">
-      {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">Dashboard Comerciante</h1>
-        <p className="text-gray-600">Gestiona tu negocio y analiza tus ventas</p>
-        
-        {/* Selector de período */}
-        <div className="mt-4 flex space-x-2">
-          {[
-            { value: '7d', label: '7 días' },
-            { value: '30d', label: '30 días' },
-            { value: '90d', label: '90 días' }
-          ].map(period => (
+    <div className="mx-auto max-w-7xl space-y-8 overflow-x-hidden px-4 py-6 sm:px-6">
+      <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900 sm:text-3xl">Analytics</h1>
+          <p className="mt-1 text-sm text-gray-600">
+            Datos del servidor — {isFetching ? 'actualizando…' : 'al día'}
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2" role="tablist" aria-label="Período">
+          {PERIODS.map((period) => (
             <button
               key={period.value}
+              type="button"
+              role="tab"
+              aria-selected={selectedPeriod === period.value}
               onClick={() => setSelectedPeriod(period.value)}
-              className={`px-4 py-2 rounded-lg text-sm font-medium ${
+              className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
                 selectedPeriod === period.value
-                  ? 'bg-blue-600 text-white'
+                  ? 'bg-primary-600 text-white'
                   : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
               }`}
             >
@@ -171,232 +128,140 @@ const MerchantAnalytics: React.FC = () => {
             </button>
           ))}
         </div>
-      </div>
+      </header>
 
-      {/* Métricas principales */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard
-          title="Ingresos del Mes"
-          value={`$${analytics.ingresosDelMes.toLocaleString('es-CO')}`}
-          change={`↗️${analytics.porcentajeCambio.toFixed(1)}% vs mes anterior`}
+          title="Ingresos del mes"
+          value={`$${safeMoney(analytics.ingresosDelMes).toLocaleString('es-CO')}`}
+          change={`${analytics.porcentajeCambio >= 0 ? '+' : ''}${analytics.porcentajeCambio.toFixed(1)}% vs mes anterior`}
           changeType={analytics.porcentajeCambio >= 0 ? 'positive' : 'negative'}
-          icon="💰"
-          color="border-green-500"
+          icon={CurrencyDollarIcon}
         />
-        
         <MetricCard
-          title="Pedidos en Tránsito"
+          title="Pedidos en tránsito"
           value={analytics.pedidosEnTransito}
           change="Requieren atención"
-          icon="🚚"
-          color="border-orange-500"
+          icon={TruckIcon}
         />
-        
         <MetricCard
-          title="Productos Agotados"
+          title="Productos agotados"
           value={analytics.productosAgotados}
           change="Necesitan restock"
-          icon="📦"
-          color="border-red-500"
+          icon={CubeIcon}
         />
-        
         <MetricCard
-          title="Tasa Confirmación"
+          title="Tasa confirmación"
           value={`${analytics.tasaConfirmacion.toFixed(1)}%`}
-          change="Entregas confirmadas"
-          icon="✅"
-          color="border-blue-500"
+          change="Sobre pedidos totales"
+          icon={CheckBadgeIcon}
         />
-      </div>
+      </section>
 
-      {/* Métricas secundarias */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <MetricCard title="Clientes únicos" value={analytics.clientesUnicos} change="En el período" icon={UsersIcon} />
+        <MetricCard title="Total productos" value={analytics.totalProductos} icon={ShoppingBagIcon} />
+        <MetricCard title="Pedidos del mes" value={analytics.pedidosDelMes} icon={ShoppingBagIcon} />
         <MetricCard
-          title="Clientes Únicos"
-          value={analytics.clientesUnicos}
-          change="Este mes"
-          icon="👥"
-          color="border-purple-500"
-        />
-        
-        <MetricCard
-          title="Total Productos"
-          value={analytics.totalProductos}
-          change="En tu catálogo"
-          icon="🛍️"
-          color="border-indigo-500"
-        />
-        
-        <MetricCard
-          title="Pedidos del Mes"
-          value={analytics.pedidosDelMes}
-          change="Ventas del Mes"
-          icon="📋"
-          color="border-teal-500"
-        />
-        
-        <MetricCard
-          title="Reseñas Totales"
+          title="Reseñas"
           value={analytics.totalReseñas}
-          change={`⭐ ${analytics.calificacionPromedio.toFixed(1)}`}
-          icon="⭐"
-          color="border-yellow-500"
+          change={`${analytics.calificacionPromedio.toFixed(1)} promedio`}
+          icon={StarIcon}
         />
-      </div>
+      </section>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* Gráfica de ventas por día */}
-        <SimpleChart
-          title="Ventas por Día"
-          data={analytics.ventasPorDia}
-        />
+      <section className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+          <h3 className="text-lg font-semibold text-gray-900">Ventas por día</h3>
+          {analytics.ventasPorDia.length > 0 ? (
+            <ul className="mt-4 max-h-72 space-y-2 overflow-y-auto">
+              {analytics.ventasPorDia.map((item, index) => (
+                <li key={index} className="flex justify-between gap-4 text-sm">
+                  <span className="text-gray-600">{item.fecha}</span>
+                  <span className="shrink-0 font-medium text-gray-900">
+                    {item.ventas} · ${safeMoney(item.ingresos).toLocaleString('es-CO')}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-4 text-sm text-gray-500">Sin ventas en este período.</p>
+          )}
+        </div>
 
-        {/* Estado de entregas */}
-        <div className="bg-white rounded-xl shadow-md p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Estado de Entregas</h3>
+        <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+          <h3 className="text-lg font-semibold text-gray-900">Pedidos por estado</h3>
           {analytics.pedidosPorEstado.length > 0 ? (
-            <div className="space-y-3">
+            <ul className="mt-4 space-y-2">
               {analytics.pedidosPorEstado.map((item, index) => (
-                <div key={index} className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600">{item.estado}</span>
-                  <span className="text-sm font-medium text-blue-600">{item.cantidad}</span>
-                </div>
+                <li key={index} className="flex justify-between text-sm">
+                  <span className="capitalize text-gray-600">{item.estado}</span>
+                  <span className="font-medium text-gray-900">{item.cantidad}</span>
+                </li>
               ))}
-            </div>
+            </ul>
           ) : (
-            <p className="text-gray-500 text-center py-4">No hay datos de entregas</p>
+            <p className="mt-4 text-sm text-gray-500">No hay pedidos registrados.</p>
           )}
         </div>
-      </div>
+      </section>
 
-      {/* Reseñas */}
-      <div className="mt-8 bg-white rounded-xl shadow-md p-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Reseñas</h3>
-        
-        {/* Estadísticas de reseñas */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-          <div>
-            <p className="text-sm text-gray-600">Total reseñas</p>
-            <p className="text-2xl font-bold text-gray-900">{analytics.totalReseñas}</p>
-          </div>
-          <div>
-            <p className="text-sm text-gray-600">Promedio</p>
-            <p className="text-2xl font-bold text-gray-900">{analytics.calificacionPromedio.toFixed(1)} ⭐</p>
-          </div>
-        </div>
-
-        {/* Distribución de calificaciones */}
-        <div className="mb-6">
-          <h4 className="text-md font-semibold text-gray-900 mb-3">Distribución de Calificaciones</h4>
-          <div className="space-y-2">
-            {[5, 4, 3, 2, 1].map(star => (
-              <div key={star} className="flex items-center space-x-3">
-                <span className="text-sm text-gray-600 w-8">{star} ⭐</span>
-                <div className="flex-1 bg-gray-200 rounded-full h-2">
-                  <div 
-                    className="bg-yellow-400 h-2 rounded-full"
-                    style={{ 
-                      width: `${analytics.totalReseñas > 0 ? (analytics.distribucionCalificaciones[star] / analytics.totalReseñas) * 100 : 0}%` 
-                    }}
-                  />
-                </div>
-                <span className="text-sm text-gray-600 w-8">
-                  {analytics.distribucionCalificaciones[star] || 0}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Reseñas recientes */}
-        <div>
-          <h4 className="text-md font-semibold text-gray-900 mb-3">Reseñas Recientes</h4>
-          {analytics.reseñasRecientes.length > 0 ? (
-            <div className="space-y-4">
-              {analytics.reseñasRecientes.map((reseña, index) => (
-                <div key={index} className="border-b border-gray-200 pb-4 last:border-b-0">
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center space-x-2">
-                      <span className="text-yellow-400">
-                        {'⭐'.repeat(reseña.calificacion)}
-                      </span>
-                      <span className="text-sm text-gray-500">
-                        {new Date(reseña.fechaCreacion).toLocaleDateString('es-CO')}
-                      </span>
-                    </div>
-                  </div>
-                  <p className="text-gray-700 text-sm">{reseña.comentario}</p>
-                  <p className="text-xs text-gray-500 mt-1">
-                    {reseña.usuario} - {reseña.producto}
-                  </p>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="text-gray-500 text-center py-4">No hay reseñas recientes</p>
-          )}
-        </div>
-      </div>
-
-      {/* Productos más vendidos */}
-      <div className="mt-8 bg-white rounded-xl shadow-md p-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">🏆 Productos Más Vendidos</h3>
-        <p className="text-sm text-gray-600 mb-4">Últimos 30 días</p>
-        
+      <section className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+        <h3 className="text-lg font-semibold text-gray-900">Productos más vendidos</h3>
         {analytics.productosMasVendidos.length > 0 ? (
-          <div className="space-y-4">
+          <ul className="mt-4 grid gap-3 sm:grid-cols-2">
             {analytics.productosMasVendidos.map((item, index) => (
-              <div key={index} className="flex items-center space-x-4 p-4 bg-gray-50 rounded-lg">
-                <div className="flex-shrink-0">
-                  <img
-                    src={getFirstImageUrl(item.producto?.imagenes)}
-                    alt={item.producto?.nombre}
-                    className="w-12 h-12 object-cover rounded-lg"
-                    onError={(e) => {
-                      e.currentTarget.src = '/placeholder-product.jpg';
-                    }}
-                  />
-                </div>
-                <div className="flex-1">
-                  <h4 className="font-medium text-gray-900">{item.producto?.nombre}</h4>
+              <li
+                key={index}
+                className="flex gap-3 rounded-lg border border-gray-100 p-3"
+              >
+                <img
+                  src={getFirstImageUrl(item.producto?.imagenes)}
+                  alt=""
+                  className="h-12 w-12 rounded-lg object-cover"
+                />
+                <div className="min-w-0">
+                  <p className="truncate font-medium text-gray-900">{item.producto?.nombre}</p>
                   <p className="text-sm text-gray-600">
-                    {item.cantidadVendida} vendidos • ${item.ingresosTotales.toLocaleString('es-CO')}
+                    {item.cantidadVendida} u. · $
+                    {safeMoney(item.ingresosTotales).toLocaleString('es-CO')}
                   </p>
                 </div>
-              </div>
+              </li>
             ))}
-          </div>
+          </ul>
         ) : (
-          <div className="text-center py-8">
-            <div className="text-4xl mb-2">📦</div>
-            <p className="text-gray-500">No hay ventas registradas aún</p>
-            <p className="text-sm text-gray-400">Tus productos más vendidos aparecerán aquí</p>
-          </div>
+          <EmptyState
+            title="Sin ventas registradas"
+            description="Tus productos más vendidos aparecerán cuando cierres pedidos."
+          />
         )}
-      </div>
+      </section>
 
-      {/* Resumen de ventas */}
-      <div className="mt-8 bg-white rounded-xl shadow-md p-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Resumen de Ventas</h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="text-center">
-            <p className="text-2xl font-bold text-gray-900">{analytics.pedidosTotales}</p>
-            <p className="text-sm text-gray-600">Total Pedidos</p>
+      <section className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+        <h3 className="text-lg font-semibold text-gray-900">Resumen de ventas</h3>
+        <dl className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <div className="text-center sm:text-left">
+            <dt className="text-sm text-gray-600">Total pedidos</dt>
+            <dd className="text-2xl font-bold text-gray-900">{analytics.pedidosTotales}</dd>
           </div>
-          <div className="text-center">
-            <p className="text-2xl font-bold text-gray-900">${analytics.totalIngresos.toLocaleString('es-CO')}</p>
-            <p className="text-sm text-gray-600">Ingresos Totales</p>
+          <div className="text-center sm:text-left">
+            <dt className="text-sm text-gray-600">Ingresos totales</dt>
+            <dd className="text-2xl font-bold text-gray-900">
+              ${safeMoney(analytics.totalIngresos).toLocaleString('es-CO')}
+            </dd>
           </div>
-          <div className="text-center">
-            <p className="text-2xl font-bold text-gray-900">
-              ${analytics.ventasTotales > 0 ? (analytics.totalIngresos / analytics.ventasTotales).toFixed(0) : 0}
-            </p>
-            <p className="text-sm text-gray-600">Promedio Diario</p>
+          <div className="text-center sm:text-left">
+            <dt className="text-sm text-gray-600">Promedio por pedido</dt>
+            <dd className="text-2xl font-bold text-gray-900">
+              ${avgDaily.toLocaleString('es-CO')}
+            </dd>
           </div>
-        </div>
-      </div>
+        </dl>
+      </section>
     </div>
   );
 };
 
-export default MerchantAnalytics; 
+export default MerchantAnalytics;
+

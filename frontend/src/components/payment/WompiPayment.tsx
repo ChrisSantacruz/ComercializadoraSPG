@@ -58,10 +58,10 @@ const WompiPayment: React.FC<WompiPaymentProps> = ({
         setAcceptanceToken(response.data.acceptanceToken);
         setAcceptancePermalink(response.data.permalink);
       } else {
-        console.error('Error loading acceptance token:', response.error);
+        onError(response.error ?? new Error('No se pudo obtener el token de aceptación'));
       }
-    } catch (error) {
-      console.error('Error loading acceptance token:', error);
+    } catch (error: unknown) {
+      onError(error);
     }
   };
 

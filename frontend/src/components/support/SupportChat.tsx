@@ -1,10 +1,70 @@
 import React, { useState, useEffect, useRef } from 'react';
+import {
+  Bars3BottomLeftIcon,
+  BriefcaseIcon,
+  CreditCardIcon,
+  PaperAirplaneIcon,
+  ShoppingBagIcon,
+  TruckIcon,
+  XMarkIcon,
+} from '@heroicons/react/24/outline';
+import { ChatBubbleLeftRightIcon } from '@heroicons/react/24/solid';
+import { BRAND_NAME } from '../nav/navData';
 
 interface Message {
   id: string;
   text: string;
   isUser: boolean;
   timestamp: Date;
+}
+
+const predefinedResponses = {
+  greeting: [
+    'Soy el asistente virtual de soporte en ' + BRAND_NAME + '. Indica cómo podemos ayudarte con tu pedido o cuenta.',
+    '¡Hola! Estoy disponible para dudas de catálogo, envíos, pagos y tu cuenta.',
+  ],
+  products: [
+    'Puedes explorar el inventario público desde “Productos”. Si buscas algo concreto, usa el buscador en la barra superior.',
+    'Las referencias están curadas por comerciantes verificados. Si necesitas volumen B2B, podemos canalizar revisión desde la sección de contacto en Sobre nosotros.',
+  ],
+  shipping: [
+    'Realizamos envíos a nivel nacional. Tiempo estimado habitual 1–5 días hábiles según origen / destino. El costo se confirma en checkout.',
+    'El detalle exacto por ciudad aparece después de cargar dirección en el paso de entrega.',
+  ],
+  payments: [
+    'Procesamos pagos con Wompi (tarjeta, PSE, Nequi según disponibilidad en el momento del pago). No almacenamos datos de tarjeta en nuestra infraestructura.',
+    'Tras autorizar el pago, verificamos el estado en servidor para reflejarlo en tus pedidos.',
+  ],
+  account: [
+    'Puedes registrarte desde “Registrarse” y recuperar contraseña con el flujo oficial de seguridad.',
+    'Desde tu perfil revisas datos de contacto, direcciones y avisos de pedido.',
+  ],
+  returns: [
+    'Ventanas de devolución y condiciones están en nuestros términos. Si tienes una incidencia con un pedido, indica número de orden desde Sobre nosotros → contacto.',
+  ],
+  merchants: [
+    'Si vendes desde la app, registra cuenta como comerciante y valida tus datos públicos para que puedan aparecer como vendedores confiables en el PDP.',
+    'Gestión de inventario, pedidos y análisis están en el espacio merchant.',
+  ],
+  technical: [
+    'Prueba cerrar pestañas, actualizar sesión y verificar tu conexión. Si algo falló en checkout, revisa tus pedidos y el estado de pago antes de repetir cargos.',
+  ],
+  goodbye: ['Gracias por escribir. Si surge otra consulta estamos disponibles desde este mismo botón de ayuda.'],
+  default: [
+    'Para un caso puntual puede atenderte equipo humano. Usa los datos de contacto en Sobre nosotros.',
+  ],
+} as const;
+
+const quickActions: { label: string; action: keyof typeof predefinedResponses }[] = [
+  { label: 'Ver productos', action: 'products' },
+  { label: 'Información envíos', action: 'shipping' },
+  { label: 'Métodos de pago', action: 'payments' },
+  { label: 'Vender en la plataforma', action: 'merchants' },
+];
+
+function pickResponse(category: keyof typeof predefinedResponses): string {
+  const list = predefinedResponses[category];
+  return list[Math.floor(Math.random() * list.length)] ?? predefinedResponses.default[0];
 }
 
 const SupportChat: React.FC = () => {
@@ -14,107 +74,21 @@ const SupportChat: React.FC = () => {
   const [isTyping, setIsTyping] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const predefinedResponses = {
-    // Saludos
-    greeting: [
-      "¡Hola! 👋 Soy Sara, tu asistente virtual de SPG. ¿En qué puedo ayudarte hoy?",
-      "¡Bienvenido a SPG! 😊 Estoy aquí para resolver todas tus dudas.",
-      "¡Hola! ¿Cómo puedo asistirte hoy? Estoy lista para ayudarte."
-    ],
-    
-    // Productos
-    products: [
-      "📦 Tenemos más de 10,000 productos en diferentes categorías. ¿Hay algo específico que buscas?",
-      "Puedes explorar todos nuestros productos en la sección 'Productos'. ¿Te interesa alguna categoría en particular?",
-      "Nuestro catálogo se actualiza diariamente. ¿Qué tipo de producto necesitas?"
-    ],
-    
-    // Envíos
-    shipping: [
-      "🚚 Hacemos envíos a toda Colombia. El tiempo de entrega varía entre 1-5 días hábiles dependiendo de tu ubicación.",
-      "Nuestros envíos son rápidos y seguros. ¿A qué ciudad necesitas que enviemos?",
-      "El costo de envío se calcula automáticamente en el checkout según tu dirección."
-    ],
-    
-    // Pagos
-    payments: [
-      "💳 Aceptamos tarjetas de crédito, débito, PSE y otros métodos de pago seguros.",
-      "Todos los pagos están protegidos con encriptación SSL. Tu información está segura con nosotros.",
-      "¿Tienes algún problema específico con el pago? Puedo ayudarte a resolverlo."
-    ],
-    
-    // Cuenta
-    account: [
-      "👤 Para crear una cuenta, solo haz clic en 'Registrarse' y sigue los pasos. ¡Es muy fácil!",
-      "¿Problemas con tu cuenta? Puedo ayudarte con login, recuperación de contraseña y más.",
-      "Tu cuenta te permite hacer seguimiento de pedidos, guardar favoritos y mucho más."
-    ],
-    
-    // Devoluciones
-    returns: [
-      "🔄 Tienes 30 días para devoluciones desde la fecha de entrega. El producto debe estar en condiciones originales.",
-      "Para iniciar una devolución, ve a 'Mis Pedidos' y selecciona el producto que deseas devolver.",
-      "¿Hay algún problema con tu pedido? Cuéntame para ayudarte mejor."
-    ],
-    
-    // Comerciantes
-    merchants: [
-      "🏪 ¡Nos encanta que quieras vender con nosotros! Regístrate como comerciante y empieza a vender hoy mismo.",
-      "Los comerciantes en SPG tienen acceso a herramientas de gestión, analytics y soporte especializado.",
-      "¿Quieres ser parte de nuestra familia de comerciantes? Te ayudo con el proceso."
-    ],
-    
-    // Soporte técnico
-    technical: [
-      "🔧 Para problemas técnicos, intenta refrescar la página o borrar caché del navegador.",
-      "¿La página no carga bien? Asegúrate de tener una conexión estable a internet.",
-      "Si el problema persiste, puedes contactar a nuestro equipo técnico: soporte@spg.com"
-    ],
-    
-    // Despedidas
-    goodbye: [
-      "¡Ha sido un placer ayudarte! 😊 Si necesitas algo más, estaré aquí.",
-      "¡Que tengas un excelente día! No dudes en escribirme si tienes más preguntas.",
-      "¡Gracias por elegir SPG! Estoy aquí cuando me necesites. 👋"
-    ],
-    
-    // Default
-    default: [
-      "Interesante pregunta. 🤔 Déjame conectarte con un especialista: soporte@spg.com",
-      "Hmm, no estoy segura sobre eso. ¿Podrías ser más específico?",
-      "Para consultas específicas, nuestro equipo humano puede ayudarte mejor: soporte@spg.com"
-    ]
-  };
-
-  const quickActions = [
-    { text: "📦 Ver productos", action: "products" },
-    { text: "🚚 Info de envíos", action: "shipping" },
-    { text: "💳 Métodos de pago", action: "payments" },
-    { text: "🏪 Vender aquí", action: "merchants" }
-  ];
-
   useEffect(() => {
     if (isOpen && messages.length === 0) {
-      addBotMessage(getRandomResponse('greeting'));
+      addBotMessage(pickResponse('greeting'));
     }
+    // Solo al abrir: si reiniciamos lista vacía debe volver a saludar
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
 
   useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
-
-  const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
-
-  const getRandomResponse = (category: keyof typeof predefinedResponses): string => {
-    const responses = predefinedResponses[category];
-    return responses[Math.floor(Math.random() * responses.length)];
-  };
+  }, [messages, isTyping]);
 
   const categorizeMessage = (message: string): keyof typeof predefinedResponses => {
     const lowerMessage = message.toLowerCase();
-    
+
     if (lowerMessage.includes('hola') || lowerMessage.includes('hi') || lowerMessage.includes('buenos')) {
       return 'greeting';
     }
@@ -130,40 +104,48 @@ const SupportChat: React.FC = () => {
     if (lowerMessage.includes('cuenta') || lowerMessage.includes('registro') || lowerMessage.includes('login')) {
       return 'account';
     }
-    if (lowerMessage.includes('devol') || lowerMessage.includes('reembolso') || lowerMessage.includes('cambio')) {
+    if (
+      lowerMessage.includes('devol') ||
+      lowerMessage.includes('reembolso') ||
+      lowerMessage.includes('cambio')
+    ) {
       return 'returns';
     }
     if (lowerMessage.includes('vender') || lowerMessage.includes('comerciante') || lowerMessage.includes('negocio')) {
       return 'merchants';
     }
-    if (lowerMessage.includes('error') || lowerMessage.includes('problema') || lowerMessage.includes('bug')) {
+    if (
+      lowerMessage.includes('error') ||
+      lowerMessage.includes('no carga') ||
+      lowerMessage.includes('bug')
+    ) {
       return 'technical';
     }
     if (lowerMessage.includes('gracias') || lowerMessage.includes('adios') || lowerMessage.includes('bye')) {
       return 'goodbye';
     }
-    
+
     return 'default';
   };
 
   const addBotMessage = (text: string) => {
     const message: Message = {
-      id: Date.now().toString(),
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
       text,
       isUser: false,
-      timestamp: new Date()
+      timestamp: new Date(),
     };
-    setMessages(prev => [...prev, message]);
+    setMessages((prev) => [...prev, message]);
   };
 
   const addUserMessage = (text: string) => {
     const message: Message = {
-      id: Date.now().toString(),
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
       text,
       isUser: true,
-      timestamp: new Date()
+      timestamp: new Date(),
     };
-    setMessages(prev => [...prev, message]);
+    setMessages((prev) => [...prev, message]);
   };
 
   const handleSendMessage = async () => {
@@ -174,141 +156,156 @@ const SupportChat: React.FC = () => {
     setInputValue('');
     setIsTyping(true);
 
-    // Simular tiempo de escritura
-    setTimeout(() => {
+    window.setTimeout(() => {
       const category = categorizeMessage(userMessage);
-      const response = getRandomResponse(category);
+      const response = pickResponse(category);
       addBotMessage(response);
       setIsTyping(false);
-    }, 1000 + Math.random() * 2000); // 1-3 segundos
+    }, 800 + Math.random() * 800);
   };
 
-  const handleQuickAction = (action: string) => {
-    const response = getRandomResponse(action as keyof typeof predefinedResponses);
-    addBotMessage(response);
+  const handleQuickAction = (action: keyof typeof predefinedResponses) => {
+    addBotMessage(pickResponse(action));
   };
 
   const formatTime = (date: Date) => {
-    return date.toLocaleTimeString('es-CO', { 
-      hour: '2-digit', 
-      minute: '2-digit' 
+    return date.toLocaleTimeString('es-CO', {
+      hour: '2-digit',
+      minute: '2-digit',
     });
   };
 
   return (
     <>
-      {/* Chat Button */}
       <button
+        type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className={`fixed bottom-6 right-6 z-50 w-16 h-16 rounded-full shadow-lg flex items-center justify-center text-white text-2xl transition-all duration-300 hover:scale-110 ${
-          isOpen ? 'bg-red-500 hover:bg-red-600' : 'bg-blue-500 hover:bg-blue-600'
+        className={`fixed bottom-[max(1rem,env(safe-area-inset-bottom,0px))] right-[max(1rem,env(safe-area-inset-right,0px))] z-dropdown flex h-11 w-11 items-center justify-center rounded-full border shadow-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 sm:h-12 sm:w-12 ${
+          isOpen
+            ? 'border-gray-800 bg-gray-900 text-white hover:bg-gray-800'
+            : 'border-gray-200 bg-gray-900 text-white hover:bg-gray-800'
         }`}
+        aria-expanded={isOpen}
+        aria-label={isOpen ? 'Cerrar ayuda en línea' : 'Abrir ayuda en línea'}
       >
-        {isOpen ? '✕' : '💬'}
+        {isOpen ? <XMarkIcon className="h-5 w-5" aria-hidden /> : <ChatBubbleLeftRightIcon className="h-5 w-5" aria-hidden />}
       </button>
 
-      {/* Chat Window */}
       {isOpen && (
-        <div className="fixed bottom-6 right-24 z-40 w-72 h-80 bg-white rounded-2xl shadow-2xl border-2 border-gray-200 overflow-hidden flex flex-col">
-          {/* Header */}
-          <div className="bg-gradient-to-r from-blue-500 via-purple-600 to-blue-700 text-white p-4">
-            <div className="flex items-center space-x-3">
-              <div className="relative">
-                <div className="w-8 h-8 bg-white rounded-full flex items-center justify-center text-lg shadow-lg">
-                  👩‍💼
-                </div>
-                <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-green-400 rounded-full border-2 border-white"></div>
-              </div>
-              <div>
-                <h3 className="font-bold text-sm">Sara - SPG</h3>
-                <p className="text-xs opacity-90 flex items-center">
-                  <span className="w-2 h-2 bg-green-400 rounded-full mr-2 animate-pulse"></span>
-                  En línea
-                </p>
-              </div>
+        <div className="fixed bottom-[calc(4.25rem+env(safe-area-inset-bottom,0px))] right-[max(1rem,env(safe-area-inset-right,0px))] z-dropdown flex max-h-[min(32rem,calc(100dvh-6rem))] w-[min(100vw-2rem,21rem)] flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-strong sm:right-[max(1.25rem,env(safe-area-inset-right,0px))] sm:w-[22rem]">
+          <header className="flex items-start justify-between gap-3 border-b border-gray-200 bg-gray-50 px-4 py-3">
+            <div>
+              <h3 className="text-sm font-semibold tracking-tight text-gray-900">Soporte {BRAND_NAME}</h3>
+              <p className="mt-0.5 flex items-center gap-1.5 text-xs text-gray-500">
+                <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden />
+                En línea
+              </p>
             </div>
-          </div>
+            <Bars3BottomLeftIcon className="mt-1 h-5 w-5 shrink-0 text-gray-400" aria-hidden />
+          </header>
 
-          {/* Messages */}
-          <div className="flex-1 overflow-y-auto p-3 bg-gradient-to-b from-gray-50 to-white">
+          <div className="flex-1 overflow-y-auto overscroll-contain px-4 py-3">
             {messages.map((message) => (
               <div
                 key={message.id}
-                className={`mb-3 ${message.isUser ? 'text-right' : 'text-left'}`}
+                className={`mb-3 flex ${message.isUser ? 'justify-end' : 'justify-start'}`}
               >
                 <div
-                  className={`inline-block max-w-[200px] px-2 py-1 rounded-lg ${
+                  className={`max-w-[88%] rounded-lg border px-2.5 py-2 shadow-sm ${
                     message.isUser
-                      ? 'bg-blue-500 text-white'
-                      : 'bg-white text-gray-800 shadow-sm'
+                      ? 'border-primary-700/20 bg-primary-700 text-[13px] text-white leading-snug'
+                      : 'border-gray-100 bg-white text-[13px] text-gray-800 leading-snug'
                   }`}
                 >
-                  <p className="text-xs">{message.text}</p>
-                  <p className={`text-xs mt-1 opacity-70 ${
-                    message.isUser ? 'text-blue-100' : 'text-gray-500'
-                  }`}>
+                  <p>{message.text}</p>
+                  <p
+                    className={`mt-1 text-[11px] ${
+                      message.isUser ? 'text-white/65' : 'text-gray-500'
+                    }`}
+                  >
                     {formatTime(message.timestamp)}
                   </p>
                 </div>
               </div>
             ))}
 
-            {isTyping && (
-              <div className="text-left mb-4">
-                <div className="inline-block bg-white px-3 py-2 rounded-lg shadow-sm">
-                  <div className="flex space-x-1">
-                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
-                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
-                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
-                  </div>
+            {isTyping ? (
+              <div className="mb-4 flex justify-start">
+                <div className="inline-flex items-center gap-1 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
+                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-gray-400" />
+                  <span
+                    className="h-1.5 w-1.5 animate-pulse rounded-full bg-gray-400"
+                    style={{ animationDelay: '120ms' }}
+                  />
+                  <span
+                    className="h-1.5 w-1.5 animate-pulse rounded-full bg-gray-400"
+                    style={{ animationDelay: '240ms' }}
+                  />
                 </div>
               </div>
-            )}
+            ) : null}
 
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Quick Actions */}
           {messages.length <= 1 && (
-            <div className="p-2 border-t bg-white">
-              <p className="text-xs text-gray-500 mb-2">Acciones rápidas:</p>
-              <div className="grid grid-cols-2 gap-1">
-                {quickActions.map((action, index) => (
-                  <button
-                    key={index}
-                    onClick={() => handleQuickAction(action.action)}
-                    className="text-xs bg-gray-100 hover:bg-gray-200 px-2 py-1 rounded text-left transition-colors"
-                  >
-                    {action.text}
-                  </button>
-                ))}
+            <div className="border-t border-gray-100 px-4 py-2.5">
+              <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                Acciones rápidas
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                {quickActions.map((qa) => {
+                  const Icon =
+                    qa.action === 'products'
+                      ? ShoppingBagIcon
+                      : qa.action === 'shipping'
+                        ? TruckIcon
+                        : qa.action === 'payments'
+                          ? CreditCardIcon
+                          : BriefcaseIcon;
+
+                  return (
+                    <button
+                      key={qa.action}
+                      type="button"
+                      onClick={() => handleQuickAction(qa.action)}
+                      className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-2.5 py-2 text-left text-[12px] font-medium leading-tight text-gray-800 shadow-sm transition-colors hover:bg-gray-50"
+                    >
+                      <Icon className="h-4 w-4 shrink-0 text-gray-500" aria-hidden />
+                      {qa.label}
+                    </button>
+                  );
+                })}
               </div>
             </div>
           )}
 
-          {/* Input */}
-          <div className="p-2 border-t bg-white">
-            <div className="flex space-x-1">
+          <div className="border-t border-gray-100 px-4 py-3">
+            <div className="flex gap-2">
+              <label htmlFor="support-chat-message" className="sr-only">
+                Escribir mensaje de soporte
+              </label>
               <input
+                id="support-chat-message"
                 type="text"
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
-                placeholder="Escribe tu mensaje..."
-                className="flex-1 px-2 py-1 border rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
+                onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
+                placeholder="Tu consulta..."
                 disabled={isTyping}
+                className="min-h-0 flex-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-[13px] text-gray-900 shadow-sm outline-none placeholder:text-gray-400 focus:border-gray-900 focus:ring-1 focus:ring-gray-900"
               />
               <button
-                onClick={handleSendMessage}
+                type="button"
+                className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-gray-900 bg-gray-900 text-white shadow-sm transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:border-gray-200 disabled:bg-gray-200 disabled:text-gray-400"
+                onClick={() => handleSendMessage()}
                 disabled={!inputValue.trim() || isTyping}
-                className="bg-blue-500 hover:bg-blue-600 disabled:bg-gray-300 text-white px-2 py-1 rounded text-xs transition-colors"
+                aria-label="Enviar mensaje"
               >
-                ➤
+                <PaperAirplaneIcon className="h-4 w-5" aria-hidden />
               </button>
             </div>
-            <p className="text-xs text-gray-400 mt-1 text-center">
-              Powered by SPG AI
-            </p>
+            <p className="mt-2 text-center text-[11px] text-gray-400">Asistente automatizado • {BRAND_NAME}</p>
           </div>
         </div>
       )}
@@ -316,4 +313,4 @@ const SupportChat: React.FC = () => {
   );
 };
 
-export default SupportChat; 
+export default SupportChat;

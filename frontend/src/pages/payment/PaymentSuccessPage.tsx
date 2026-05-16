@@ -20,8 +20,8 @@ const PaymentSuccessPage: React.FC = () => {
       if (response.data.exito) {
         setOrderData(response.data.datos);
       }
-    } catch (error) {
-      console.error('Error cargando orden:', error);
+    } catch {
+      /* Orden opcional en pantalla de éxito */
     }
   };
 

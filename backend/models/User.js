@@ -262,20 +262,9 @@ userSchema.methods.compararPassword = async function(passwordCandidato) {
   return await bcrypt.compare(passwordCandidato, this.password);
 };
 
-// Helper para convertir URLs locales a placeholder
+// Devolver URL tal cual: /uploads/ la resuelve el front con REACT_APP_API_URL
 const getImageUrl = (url) => {
   if (!url) return null;
-  
-  // Si ya es una URL completa de Cloudinary, devolverla tal cual
-  if (url.startsWith('http://') || url.startsWith('https://')) {
-    return url;
-  }
-  
-  // Si es una ruta local que empieza con /uploads/, usar placeholder
-  if (url.startsWith('/uploads/')) {
-    return 'https://via.placeholder.com/800x200/e5e7eb/6b7280?text=Banner+No+Disponible';
-  }
-  
   return url;
 };
 

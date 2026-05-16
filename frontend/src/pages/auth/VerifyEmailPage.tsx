@@ -1,75 +1,73 @@
-import React, { useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import React, { useEffect, useState } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { EnvelopeIcon } from '@heroicons/react/24/outline';
 import { authService } from '../../services/authService';
 import { useAuthStore } from '../../stores/authStore';
-import LoadingSpinner from '../../components/ui/LoadingSpinner';
+import { AuthLayoutShell } from '../../components/auth/AuthLayoutShell';
+import { FormField } from '../../components/ui/FormField';
+import { Input } from '../../components/ui/Input';
+import { Button } from '../../components/ui/Button';
+import { useNotifications } from '../../components/ui/NotificationContainer';
 
 const VerifyEmailPage: React.FC = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const updateUser = useAuthStore(state => state.updateUser);
-  
+  const setSession = useAuthStore((s) => s.setSession);
+  const { showSuccess, showError } = useNotifications();
+
   const emailFromParams = searchParams.get('email') || '';
-  
+
   const [email, setEmail] = useState(emailFromParams);
   const [code, setCode] = useState('');
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
   const [resendingCode, setResendingCode] = useState(false);
+
+  useEffect(() => {
+    setEmail(emailFromParams);
+  }, [emailFromParams]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    setError(null);
-    setSuccess(null);
 
     try {
       const response = await authService.verifyEmailWithCode(email, code);
-      
-      // Si la respuesta incluye un token, actualizar el usuario en el store
+
       if (response.token) {
-        localStorage.setItem('auth-storage', JSON.stringify({
-          state: {
-            token: response.token,
-            user: response.usuario,
-            isAuthenticated: true
-          }
-        }));
-        updateUser(response.usuario);
+        setSession({
+          user: response.usuario,
+          token: response.token,
+          refreshToken: response.refreshToken ?? null,
+        });
       }
 
-      setSuccess('¡Email verificado exitosamente! Redirigiendo...');
-      
-      setTimeout(() => {
-        navigate('/');
-      }, 2000);
-
-    } catch (err: any) {
-      setError(err.message || 'Error al verificar el código');
+      showSuccess('Cuenta verificada', 'Tu correo quedó confirmado. Redirigiendo al inicio.');
+      navigate('/', { replace: true });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Código incorrecto o expirado.';
+      showError('No pudimos verificar', msg);
     } finally {
       setLoading(false);
     }
   };
 
   const handleResendCode = async () => {
-    if (!email) {
-      setError('Por favor ingresa tu email');
+    if (!email.trim()) {
+      showError('Falta el correo', 'Indica el correo asociado a tu registro.');
       return;
     }
 
     setResendingCode(true);
-    setError(null);
-    setSuccess(null);
 
     try {
-      await authService.resendVerificationCode(email);
-      setSuccess('✅ Código generado exitosamente. Si no recibes el email en 2-3 minutos, revisa tu carpeta de spam o inténtalo nuevamente.');
-    } catch (err: any) {
-      if (err.message?.includes('timeout')) {
-        setError('⏰ El envío está tomando más tiempo del esperado. El código fue generado, revisa tu email en unos minutos.');
+      await authService.resendVerificationCode(email.trim().toLowerCase());
+      showSuccess('Código solicitado', 'Si el correo existe, enviamos un nuevo código. Revisa spam.');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'No pudimos reenviar el código.';
+      if (msg.toLowerCase().includes('timeout')) {
+        showError('Envío lento', 'Espera unos minutos y revisa tu bandeja; el código puede haberse generado.');
       } else {
-        setError(err.message || 'Error al reenviar el código');
+        showError('Reenvío fallido', msg);
       }
     } finally {
       setResendingCode(false);
@@ -77,124 +75,91 @@ const VerifyEmailPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#0d8e76]/10 to-[#1c3a35]/5 flex items-center justify-center p-4">
-      <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8">
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-[#0d8e76]/10 rounded-full mb-4">
-            <span className="text-3xl">📧</span>
-          </div>
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">
-            Verifica tu Email
-          </h1>
-          <p className="text-gray-600">
-            {emailFromParams ? (
-              <>Ingresa el código de verificación para completar tu registro</>
-            ) : (
-              <>Verifica tu cuenta ingresando el código de 6 dígitos</>
-            )}
-          </p>
-          {email && (
-            <p className="text-sm text-gray-500 mt-2">
-              Enviado a: <strong>{email}</strong>
-            </p>
-          )}
-        </div>
-
-        {error && (
-          <div className="mb-6 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg flex items-start">
-            <span className="text-xl mr-3">⚠️</span>
-            <span>{error}</span>
-          </div>
-        )}
-
-        {success && (
-          <div className="mb-6 bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg flex items-start">
-            <span className="text-xl mr-3">✅</span>
-            <span>{success}</span>
-          </div>
-        )}
-
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Email
-            </label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="tu@email.com"
-              required
-              disabled={!!emailFromParams}
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Código de Verificación
-            </label>
-            <input
-              type="text"
-              value={code}
-              onChange={(e) => {
-                const value = e.target.value.replace(/\D/g, '').slice(0, 6);
-                setCode(value);
-              }}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-center text-2xl font-bold tracking-widest font-mono"
-              placeholder="000000"
-              maxLength={6}
-              required
-            />
-            <p className="mt-2 text-sm text-gray-500 text-center">
-              Ingresa el código de 6 dígitos
-            </p>
-          </div>
-
-          <button
-            type="submit"
-            disabled={loading || code.length !== 6}
-            className="w-full bg-[#f2902f] text-white py-3 rounded-lg font-semibold hover:bg-[#e07d1f] disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center"
-          >
-            {loading ? (
-              <>
-                <LoadingSpinner />
-                <span className="ml-2">Verificando...</span>
-              </>
-            ) : (
-              'Verificar Email'
-            )}
-          </button>
-        </form>
-
-        <div className="mt-6 p-4 bg-gray-50 rounded-lg text-center">
-          <p className="text-sm text-gray-600 mb-3">
-            ¿No recibiste el código?
-          </p>
-          <div className="space-y-2">
-            <button
-              onClick={handleResendCode}
-              disabled={resendingCode || !email}
-              className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 py-2 px-4 rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              {resendingCode ? '📤 Reenviando...' : '📤 Reenviar código'}
-            </button>
-            <p className="text-xs text-gray-500">
-              Revisa tu bandeja de entrada y spam. El código es válido por 15 minutos.
-            </p>
-          </div>
-        </div>
-
-        <div className="mt-6 text-center">
-          <button
-            onClick={() => navigate('/login')}
-            className="text-gray-600 hover:text-gray-800 text-sm"
-          >
-            ← Volver al inicio de sesión
-          </button>
+    <AuthLayoutShell
+      title="Verificar correo"
+      subtitle={
+        emailFromParams
+          ? 'Introduce el código de 6 dígitos que enviamos a tu bandeja.'
+          : 'Introduce tu correo y el código de 6 dígitos.'
+      }
+      footerLink={{
+        hint: '¿Ya verificaste?',
+        to: '/login',
+        label: 'Ir al inicio de sesión',
+      }}
+    >
+      <div className="mb-8 flex justify-center">
+        <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-primary-200 bg-primary-50 text-primary-700">
+          <EnvelopeIcon className="h-8 w-8" aria-hidden />
         </div>
       </div>
-    </div>
+
+      {email ? (
+        <p className="mb-6 text-center text-sm text-gray-600">
+          Código enviado a <span className="font-medium text-gray-900">{email}</span>
+        </p>
+      ) : null}
+
+      <form className="space-y-5" onSubmit={handleSubmit} noValidate>
+        {!emailFromParams ? (
+          <FormField id="email" label="Correo electrónico" required>
+            <Input
+              type="email"
+              autoComplete="email"
+              value={email}
+              onChange={(ev) => setEmail(ev.target.value)}
+              placeholder="nombre@empresa.com"
+              disabled={loading}
+            />
+          </FormField>
+        ) : null}
+
+        <FormField id="codigo" label="Código de verificación" required hint="6 dígitos numéricos.">
+          <Input
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            value={code}
+            onChange={(ev) => {
+              const value = ev.target.value.replace(/\D/g, '').slice(0, 6);
+              setCode(value);
+            }}
+            placeholder="000000"
+            maxLength={6}
+            disabled={loading}
+            className="text-center font-mono text-2xl font-semibold tracking-[0.35em]"
+          />
+        </FormField>
+
+        <Button type="submit" variant="secondary" size="lg" className="w-full" loading={loading} disabled={code.length !== 6}>
+          Verificar y continuar
+        </Button>
+      </form>
+
+      <div className="mt-8 rounded-xl border border-gray-200 bg-gray-50 p-4 text-center">
+        <p className="text-sm text-gray-600">¿No recibiste el código?</p>
+        <Button
+          type="button"
+          variant="outline"
+          size="md"
+          className="mt-3 w-full"
+          loading={resendingCode}
+          disabled={resendingCode || !email.trim()}
+          onClick={handleResendCode}
+        >
+          Reenviar código
+        </Button>
+        <p className="mt-2 text-xs text-gray-500">El código caduca en 15 minutos.</p>
+      </div>
+
+      <p className="mt-6 text-center">
+        <Link
+          to="/login"
+          className="text-sm font-medium text-primary-600 underline-offset-4 hover:text-primary-700 hover:underline"
+        >
+          Volver al inicio de sesión
+        </Link>
+      </p>
+    </AuthLayoutShell>
   );
 };
 

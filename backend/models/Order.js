@@ -260,7 +260,16 @@ const orderSchema = new mongoose.Schema({
     default: Date.now
   },
   fechaCancelacion: Date,
-  motivoCancelacion: String
+  motivoCancelacion: String,
+
+  /** Clave idempotente opcional (checkout) para evitar pedidos duplicados en doble submit */
+  idempotencyKey: {
+    type: String,
+    trim: true,
+    sparse: true,
+    unique: true,
+    maxlength: 200
+  }
 }, {
   timestamps: true,
   toJSON: { virtuals: true },
