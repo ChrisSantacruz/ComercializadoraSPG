@@ -3,6 +3,21 @@ const Product = require('../models/Product');
 const { validationResult } = require('express-validator');
 const { successResponse, errorResponse } = require('../utils/helpers');
 
+const DELIVERY_TYPES = ['domicilio', 'recoger_establecimiento'];
+
+const populateCartProducts = async (carrito) => {
+  await carrito.populate({
+    path: 'productos.producto',
+    select: 'nombre precio imagenes stock estado comerciante',
+    populate: {
+      path: 'comerciante',
+      select: 'nombre'
+    }
+  });
+
+  return carrito;
+};
+
 // @desc    Obtener carrito del usuario
 // @route   GET /api/cart
 // @access  Private
@@ -130,14 +145,7 @@ const agregarAlCarrito = async (req, res) => {
     
     console.log(`💾 Carrito guardado. Productos: ${carrito.productos.length}, Subtotal: ${carrito.subtotal}, Total: ${carrito.total}`);
 
-    await carrito.populate({
-      path: 'productos.producto',
-      select: 'nombre precio imagenes stock comerciante',
-      populate: {
-        path: 'comerciante',
-        select: 'nombre'
-      }
-    });
+    await populateCartProducts(carrito);
 
     successResponse(res, 'Producto agregado al carrito exitosamente', carrito);
 
@@ -207,14 +215,7 @@ const actualizarCantidad = async (req, res) => {
     
     console.log(`💾 Cantidad actualizada. Subtotal item: ${productoEnCarrito.subtotal}, Subtotal total: ${carrito.subtotal}`);
 
-    await carrito.populate({
-      path: 'productos.producto',
-      select: 'nombre precio imagenes stock comerciante',
-      populate: {
-        path: 'comerciante',
-        select: 'nombre'
-      }
-    });
+    await populateCartProducts(carrito);
 
     successResponse(res, 'Cantidad actualizada exitosamente', carrito);
 
@@ -257,14 +258,7 @@ const eliminarDelCarrito = async (req, res) => {
     
     console.log(`💾 Carrito guardado. Subtotal: ${carrito.subtotal}, Total: ${carrito.total}`);
 
-    await carrito.populate({
-      path: 'productos.producto',
-      select: 'nombre precio imagenes stock comerciante',
-      populate: {
-        path: 'comerciante',
-        select: 'nombre'
-      }
-    });
+    await populateCartProducts(carrito);
 
     successResponse(res, 'Producto eliminado del carrito exitosamente', carrito);
 
@@ -287,8 +281,10 @@ const limpiarCarrito = async (req, res) => {
     carrito.productos = [];
     carrito.subtotal = 0;
     carrito.impuestos = 0;
+    carrito.costoEnvio = 0;
     carrito.total = 0;
     carrito.cupones = [];
+    carrito.tipoEntrega = 'domicilio';
 
     await carrito.save();
 
@@ -527,19 +523,50 @@ const recalcularCarrito = async (req, res) => {
     await carrito.save();
 
     // Repoblar con los datos de productos
-    await carrito.populate({
-      path: 'productos.producto',
-      select: 'nombre precio imagenes stock estado comerciante',
-      populate: {
-        path: 'comerciante',
-        select: 'nombre'
-      }
-    });
+    await populateCartProducts(carrito);
 
     successResponse(res, 'Carrito recalculado exitosamente', carrito);
 
   } catch (error) {
     console.error('Error recalculando carrito:', error);
+    errorResponse(res, 'Error interno del servidor', 500);
+  }
+};
+
+// @desc    Actualizar tipo de entrega del carrito
+// @route   PUT /api/cart/delivery-type
+// @access  Private
+const actualizarTipoEntrega = async (req, res) => {
+  try {
+    const { tipoEntrega } = req.body;
+
+    if (!DELIVERY_TYPES.includes(tipoEntrega)) {
+      return errorResponse(res, 'Tipo de entrega inválido', 400);
+    }
+
+    let carrito = await Cart.findOne({ usuario: req.usuario.id });
+
+    if (!carrito) {
+      carrito = new Cart({
+        usuario: req.usuario.id,
+        productos: [],
+        tipoEntrega
+      });
+    } else {
+      carrito.tipoEntrega = tipoEntrega;
+    }
+
+    carrito.calcularTotales();
+    carrito.markModified('tipoEntrega');
+    carrito.markModified('costoEnvio');
+    carrito.markModified('total');
+
+    await carrito.save();
+    await populateCartProducts(carrito);
+
+    successResponse(res, 'Tipo de entrega actualizado exitosamente', carrito);
+  } catch (error) {
+    console.error('Error actualizando tipo de entrega:', error);
     errorResponse(res, 'Error interno del servidor', 500);
   }
 };
@@ -553,5 +580,6 @@ module.exports = {
   aplicarCupon,
   removerCupon,
   obtenerCuponesDisponibles,
-  recalcularCarrito
+  recalcularCarrito,
+  actualizarTipoEntrega
 }; 

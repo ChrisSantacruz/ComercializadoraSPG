@@ -414,13 +414,15 @@ const OrderDetailPage: React.FC = () => {
                   </div>
                 )}
                 
+                {order.impuestos > 0 && (
                 <div className="flex justify-between text-gray-600">
                   <span>Impuestos</span>
                   <span>${order.impuestos.toLocaleString('es-CO')}</span>
                 </div>
+                )}
                 
                 <div className="flex justify-between text-gray-600">
-                  <span>Envío</span>
+                  <span>{isStorePickup ? 'Recogida' : 'Envío'}</span>
                   <span>{order.costoEnvio === 0 ? 'Gratis' : `$${order.costoEnvio.toLocaleString('es-CO')}`}</span>
                 </div>
                 
@@ -436,8 +438,19 @@ const OrderDetailPage: React.FC = () => {
             {/* Información de entrega */}
             <div className="bg-white rounded-xl shadow-lg p-6">
               <h3 className="text-xl font-bold text-gray-900 mb-4">Información de entrega</h3>
-              
-              {(() => {
+
+              {isStorePickup ? (
+                <div className="space-y-3">
+                  <div>
+                    <div className="text-sm font-medium text-gray-700">Modalidad</div>
+                    <div className="text-gray-900">Recoger en establecimiento</div>
+                  </div>
+                  <div>
+                    <div className="text-sm font-medium text-gray-700">Notas</div>
+                    <div className="text-gray-600 text-sm">Te contactaremos para coordinar la recogida de tu pedido.</div>
+                  </div>
+                </div>
+              ) : (() => {
                 const deliveryInfo = formatDeliveryInfo(order.direccionEntrega);
                 
                 return (

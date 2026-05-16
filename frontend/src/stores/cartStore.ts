@@ -33,6 +33,7 @@ interface CartState {
   updateQuantity: (productId: string, cantidad: number) => Promise<void>;
   removeItem: (productId: string) => Promise<void>;
   clearCart: () => Promise<void>;
+  updateDeliveryType: (tipoEntrega: DeliveryType) => Promise<void>;
   applyCoupon: (codigo: string) => Promise<void>;
   removeCoupon: (codigo: string) => Promise<void>;
   getItemCount: () => number;

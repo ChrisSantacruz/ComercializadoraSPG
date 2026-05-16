@@ -49,6 +49,7 @@ const Footer: React.FC = () => {
                   Conoce al equipo y los canales institucionales
                 </Link>
               </div>
+              {/* eslint-enable jsx-a11y/anchor-is-valid */}
             </div>
           </div>
 

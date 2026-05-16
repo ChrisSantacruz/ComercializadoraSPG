@@ -49,6 +49,7 @@ const MerchantReviewsPage: React.FC = () => {
   useEffect(() => {
     loadReviews();
     loadStats();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, selectedFilter]);
 
   const loadReviews = async () => {

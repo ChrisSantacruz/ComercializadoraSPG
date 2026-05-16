@@ -184,11 +184,14 @@ export interface Coupon {
   esEnvioGratis?: boolean;
 }
 
+export type DeliveryType = 'domicilio' | 'recoger_establecimiento';
+
 export interface Cart {
   _id: string;
   usuario: string;
   productos: CartItem[];
   cupones: Coupon[];
+  tipoEntrega: DeliveryType;
   subtotal: number;
   descuentos: number;
   impuestos: number;
@@ -512,7 +515,8 @@ export interface OrderForm {
     producto: string;
     cantidad: number;
   }>;
-  direccionEntrega: string | AddressForm;
+  direccionEntrega: string | AddressForm | null;
+  tipoEntrega: DeliveryType;
   metodoPago: {
     tipo: 'PSE' | 'Nequi' | 'tarjeta_credito' | 'wompi' | 'wompi_card';
     datos: any;

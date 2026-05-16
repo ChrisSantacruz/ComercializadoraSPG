@@ -7,6 +7,7 @@ import { useRouteScrollRestoration } from '../hooks/useRouteScrollRestoration';
 
 import PublicLayout from '../layouts/PublicLayout';
 import DashboardLayout from '../layouts/DashboardLayout';
+import PublicLayout from '../layouts/PublicLayout';
 
 const HomePage = lazy(() => import('../pages/home/HomePage'));
 const ContactPage = lazy(() => import('../pages/ContactPage'));
