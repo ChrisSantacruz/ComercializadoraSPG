@@ -48,9 +48,14 @@ export const getImageUrl = (imageUrl: string | null | undefined | any): string =
     return `${API_BASE_URL}${urlString}`;
   }
 
+  // Rutas legacy productos/ y nuevas products/
+  if (urlString.startsWith('/uploads/productos/') || urlString.startsWith('/uploads/products/')) {
+    return `${API_BASE_URL}${urlString}`;
+  }
+
   // Si es solo el nombre del archivo, agregar la ruta completa
   if (!urlString.startsWith('/') && !urlString.includes('/')) {
-    return `${API_BASE_URL}/uploads/productos/${urlString}`;
+    return `${API_BASE_URL}/uploads/products/${urlString}`;
   }
 
   return `${API_BASE_URL}${urlString}`;

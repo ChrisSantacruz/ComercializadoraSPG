@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const productController = require('../controllers/productController');
 const { protect, authorize } = require('../middlewares/auth');
-const { subirImagenesProducto } = require('../middlewares/upload');
+const { subirMediaProducto } = require('../middlewares/productMediaUpload');
 
 // @route   GET /api/products
 // @desc    Get all products
@@ -22,12 +22,12 @@ router.get('/:id', productController.getProductById);
 // @route   POST /api/products
 // @desc    Create new product
 // @access  Private (Merchant only)
-router.post('/', protect, authorize('comerciante'), subirImagenesProducto, productController.crearProducto);
+router.post('/', protect, authorize('comerciante'), subirMediaProducto, productController.crearProducto);
 
 // @route   PUT /api/products/:id
 // @desc    Update product
 // @access  Private (Product owner only)
-router.put('/:id', protect, authorize('comerciante'), subirImagenesProducto, productController.actualizarProducto);
+router.put('/:id', protect, authorize('comerciante'), subirMediaProducto, productController.actualizarProducto);
 
 // @route   DELETE /api/products/:id
 // @desc    Delete product
@@ -37,6 +37,6 @@ router.delete('/:id', protect, authorize('comerciante'), productController.elimi
 // @route   POST /api/products/:id/imagenes
 // @desc    Upload product images
 // @access  Private (Product owner only)
-router.post('/:id/imagenes', protect, authorize('comerciante'), subirImagenesProducto, productController.subirImagenes);
+router.post('/:id/imagenes', protect, authorize('comerciante'), subirMediaProducto, productController.subirImagenes);
 
 module.exports = router; 

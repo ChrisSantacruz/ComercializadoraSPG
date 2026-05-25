@@ -1,57 +1,28 @@
 const Product = require('../models/Product');
-const User = require('../models/User');
 const { validationResult } = require('express-validator');
 const { successResponse, errorResponse, paginateData, transformarProducto, transformarProductos } = require('../utils/helpers');
-const Review = require('../models/Review'); // Added Review model
-const Order = require('../models/Order'); // Added Order model
+const Review = require('../models/Review');
+const Order = require('../models/Order');
 const mongoose = require('mongoose');
 const logger = require('../utils/logger');
+const { cleanupUploadedFiles } = require('../services/localMediaStorage');
+const {
+  buildMediaFromUploads,
+  syncLegacyImagesFromMedia,
+  ensureMediaFromLegacy,
+  parseMediaOrderField,
+  parseRemovedMediaIds,
+  reorderMedia,
+  removeMediaByIds,
+} = require('../services/productMediaService');
+const {
+  coerceNumber,
+  normalizeVariantsInput,
+  validateStockPolicy,
+} = require('../services/productStockService');
 
 const PUBLIC_PRODUCT_STATUSES = ['approved', 'aprobado'];
 const MERCHANT_VISIBLE_STATUSES = ['pending', 'approved', 'rejected', 'suspended', 'pendiente', 'aprobado', 'rechazado', 'suspendido', 'pausado', 'agotado'];
-
-/**
- * Construye documentos `imagenes` desde req.files (disco local o Cloudinary).
- * Se guarda `/uploads/...` o URL absoluta; el frontend antepone REACT_APP_API_URL a las rutas relativas.
- */
-function mapUploadedFilesToImagenes(files, nombreBase) {
-  if (!files || !files.length) return [];
-  const baseName = nombreBase || 'Producto';
-  const out = [];
-  for (let i = 0; i < files.length; i++) {
-    const file = files[i];
-    let imageUrl;
-    const p = file.path != null ? String(file.path) : '';
-    if (p.startsWith('http://') || p.startsWith('https://')) {
-      imageUrl = p;
-    } else if (p) {
-      const norm = p.replace(/\\/g, '/');
-      const lower = norm.toLowerCase();
-      const idx = lower.indexOf('/uploads/');
-      if (idx !== -1) {
-        imageUrl = norm.slice(idx);
-      } else {
-        const up = lower.indexOf('uploads/');
-        if (up !== -1) {
-          imageUrl = `/${norm.slice(up)}`;
-        } else {
-          imageUrl = `/uploads/productos/${file.filename || `file-${Date.now()}`}`;
-        }
-      }
-    } else if (file.filename) {
-      imageUrl = `/uploads/productos/${file.filename}`;
-    } else {
-      continue;
-    }
-    out.push({
-      url: String(imageUrl).replace(/\\/g, '/'),
-      publicId: file.public_id || null,
-      alt: `${baseName} - Imagen ${i + 1}`,
-      orden: i,
-    });
-  }
-  return out;
-}
 
 function parseJsonField(value, fallback) {
   if (value == null || value === '') return fallback;
@@ -63,56 +34,29 @@ function parseJsonField(value, fallback) {
   }
 }
 
-function normalizeVariantImages(value, productName, index) {
-  const list = Array.isArray(value) ? value : [];
-  return list
-    .map((image, imageIndex) => {
-      const url = typeof image === 'string' ? image : image?.url;
-      if (!url || typeof url !== 'string') return null;
-      return {
-        url: url.trim(),
-        publicId: typeof image === 'object' ? image.publicId || image.public_id || null : null,
-        alt: (typeof image === 'object' && image.alt) || `${productName || 'Producto'} - Variante ${index + 1}`,
-        orden: Number.isFinite(Number(image?.orden)) ? Number(image.orden) : imageIndex,
-      };
-    })
-    .filter(Boolean);
+function structuredError(res, status, code, message, detalles = null) {
+  const body = {
+    exito: false,
+    success: false,
+    codigo: code,
+    code,
+    mensaje: message,
+    message,
+  };
+  if (detalles && process.env.NODE_ENV === 'development') {
+    body.detalles = detalles;
+  }
+  return res.status(status).json(body);
 }
 
-function normalizeVariantsInput(rawVariants, productName, basePrice) {
-  const parsed = parseJsonField(rawVariants, []);
-  if (!Array.isArray(parsed)) return [];
+function applyUploadedMedia(datosProducto, req) {
+  const imageFiles = req.productImageFiles || [];
+  const videoFiles = req.productVideoFiles || [];
+  if (!imageFiles.length && !videoFiles.length) return;
 
-  return parsed
-    .map((variant, index) => {
-      const attributes = variant?.attributes && typeof variant.attributes === 'object'
-        ? Object.fromEntries(
-            Object.entries(variant.attributes)
-              .map(([key, value]) => [String(key).trim(), String(value || '').trim()])
-              .filter(([key, value]) => key && value),
-          )
-        : {};
-
-      if (Object.keys(attributes).length === 0) return null;
-
-      const precio = Number(variant.precio ?? basePrice);
-      const precioOferta = variant.precioOferta === '' || variant.precioOferta == null
-        ? undefined
-        : Number(variant.precioOferta);
-
-      return {
-        _id: variant._id,
-        sku: typeof variant.sku === 'string' ? variant.sku.trim() : '',
-        attributes,
-        precio: Number.isFinite(precio) ? precio : Number(basePrice || 0),
-        ...(Number.isFinite(precioOferta) && precioOferta > 0 ? { precioOferta } : {}),
-        stock: Number.isFinite(Number(variant.stock)) ? Number(variant.stock) : 0,
-        imagenes: normalizeVariantImages(variant.imagenes, productName, index),
-        activo: variant.activo !== false,
-        isDefault: variant.isDefault === true,
-      };
-    })
-    .filter(Boolean);
+  const offset = datosProducto.media?.length || 0;
+  const nuevos = buildMediaFromUploads(imageFiles, videoFiles, datosProducto.nombre, offset);
+  datosProducto.media = [...(datosProducto.media || []), ...nuevos];
 }
 
 // @desc    Obtener todos los productos
@@ -312,92 +256,128 @@ const getProductById = async (req, res) => {
 // @route   POST /api/products
 // @access  Private (Comerciante)
 const crearProducto = async (req, res) => {
+  const uploaded = [...(req.productImageFiles || []), ...(req.productVideoFiles || [])];
   try {
     logger.debug('product_create_start', {
       requestId: req.requestId,
       merchantId: req.usuario.id,
-      files: req.files ? req.files.length : 0,
+      images: req.productImageFiles?.length || 0,
+      videos: req.productVideoFiles?.length || 0,
     });
 
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return errorResponse(res, 'Errores de validación', 400, errors.array());
+      cleanupUploadedFiles(uploaded);
+      return structuredError(res, 400, 'VALIDATION_ERROR', 'Errores de validación', errors.array());
     }
 
-    // Procesar los datos del producto
+    const nombre = String(req.body.nombre || '').trim();
+    const descripcion = String(req.body.descripcion || '').trim();
+    const precio = coerceNumber(req.body.precio, 0);
+    const categoria = req.body.categoria;
+
+    if (!nombre) {
+      cleanupUploadedFiles(uploaded);
+      return structuredError(res, 400, 'MISSING_NAME', 'El nombre del producto es requerido');
+    }
+    if (!descripcion) {
+      cleanupUploadedFiles(uploaded);
+      return structuredError(res, 400, 'MISSING_DESCRIPTION', 'La descripción es requerida');
+    }
+    if (precio <= 0) {
+      cleanupUploadedFiles(uploaded);
+      return structuredError(res, 400, 'INVALID_PRICE', 'El precio debe ser mayor a 0');
+    }
+    if (!categoria) {
+      cleanupUploadedFiles(uploaded);
+      return structuredError(res, 400, 'MISSING_CATEGORY', 'La categoría es requerida');
+    }
+
     const datosProducto = {
-      nombre: req.body.nombre,
-      descripcion: req.body.descripcion,
-      precio: parseFloat(req.body.precio),
-      stock: parseInt(req.body.stock) || 0,
-      categoria: req.body.categoria,
+      nombre,
+      descripcion,
+      precio,
+      stock: coerceNumber(req.body.stock, 0),
+      categoria,
       comerciante: req.usuario.id,
       estado: 'pending',
-      moderacion: {
-        estado: 'pending'
-      }
+      moderacion: { estado: 'pending' },
+      media: [],
     };
 
-    // Procesar tags si existen
     if (req.body.tags) {
       try {
         datosProducto.tags = parseJsonField(req.body.tags, req.body.tags);
-      } catch (e) {
-        datosProducto.tags = req.body.tags.split(',').map(tag => tag.trim());
+      } catch {
+        datosProducto.tags = String(req.body.tags).split(',').map((tag) => tag.trim());
       }
     }
 
-    const variants = normalizeVariantsInput(req.body.variants, datosProducto.nombre, datosProducto.precio);
+    const { variants, error: variantError } = normalizeVariantsInput(
+      req.body.variants,
+      datosProducto.nombre,
+      datosProducto.precio,
+    );
+    if (variantError) {
+      cleanupUploadedFiles(uploaded);
+      return structuredError(res, 400, variantError.code, variantError.message);
+    }
     if (variants.length > 0) {
       datosProducto.variants = variants;
     }
 
-    // Procesar especificaciones si existen
+    const stockError = validateStockPolicy({ stock: datosProducto.stock, variants });
+    if (stockError) {
+      cleanupUploadedFiles(uploaded);
+      return structuredError(res, 400, stockError.code, stockError.message);
+    }
+
     if (req.body.especificaciones) {
       try {
-        const specs = typeof req.body.especificaciones === 'string'
-          ? JSON.parse(req.body.especificaciones)
-          : req.body.especificaciones;
-        
-        // Convertir objeto plano a array de objetos {nombre, valor}
+        const specs =
+          typeof req.body.especificaciones === 'string'
+            ? JSON.parse(req.body.especificaciones)
+            : req.body.especificaciones;
         datosProducto.especificaciones = Object.entries(specs)
-          .filter(([key, value]) => value && value.trim() !== '')
-          .map(([nombre, valor]) => ({ nombre, valor }));
+          .filter(([, value]) => value && String(value).trim() !== '')
+          .map(([nombre, valor]) => ({ nombre, valor: String(valor) }));
       } catch (e) {
         logger.warn('product_specs_parse_failed', { requestId: req.requestId, message: e.message });
       }
     }
 
-    // Procesar imágenes
-    if (req.files && req.files.length > 0) {
-      const imagenesData = mapUploadedFilesToImagenes(req.files, datosProducto.nombre);
-      if (imagenesData.length > 0) {
-        datosProducto.imagenes = imagenesData;
-        datosProducto.imagenPrincipal = imagenesData[0].url;
-      }
-    } else {
-      logger.debug('product_create_no_images', { requestId: req.requestId });
-    }
+    applyUploadedMedia(datosProducto, req);
+    syncLegacyImagesFromMedia(datosProducto);
 
     const producto = new Product(datosProducto);
     await producto.save();
-
     await producto.populate('comerciante', 'nombre email');
 
     logger.info('product_created_pending_moderation', {
       requestId: req.requestId,
       productId: producto._id,
       merchantId: req.usuario.id,
+      mediaCount: producto.media?.length || 0,
+      variantCount: producto.variants?.length || 0,
+      stock: producto.stock,
     });
 
-    successResponse(res, 'Producto creado exitosamente. Quedó pendiente de revisión antes de publicarse.', transformarProducto(producto.toObject({ virtuals: true })), 201);
-
+    successResponse(
+      res,
+      'Producto creado exitosamente. Quedó pendiente de revisión antes de publicarse.',
+      transformarProducto(producto.toObject({ virtuals: true })),
+      201,
+    );
   } catch (error) {
+    cleanupUploadedFiles(uploaded);
     logger.error('product_create_failed', { requestId: req.requestId, message: error.message });
     if (error.name === 'ValidationError') {
-      return errorResponse(res, 'Error de validación', 400, error.errors);
+      return structuredError(res, 400, 'MONGOOSE_VALIDATION', 'Error de validación', error.errors);
     }
-    errorResponse(res, 'Error interno del servidor', 500);
+    if (error.message?.includes('variante')) {
+      return structuredError(res, 400, 'VARIANT_CONFLICT', error.message);
+    }
+    return structuredError(res, 500, 'PRODUCT_CREATE_FAILED', 'Error interno del servidor');
   }
 };
 
@@ -405,61 +385,64 @@ const crearProducto = async (req, res) => {
 // @route   PUT /api/products/:id
 // @access  Private (Comerciante - Solo sus productos)
 const actualizarProducto = async (req, res) => {
+  const uploaded = [...(req.productImageFiles || []), ...(req.productVideoFiles || [])];
   try {
     if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
-      return errorResponse(res, 'ID de producto inválido', 400);
+      cleanupUploadedFiles(uploaded);
+      return structuredError(res, 400, 'INVALID_PRODUCT_ID', 'ID de producto inválido');
     }
 
     const producto = await Product.findById(req.params.id);
-
     if (!producto) {
-      return errorResponse(res, 'Producto no encontrado', 404);
+      cleanupUploadedFiles(uploaded);
+      return structuredError(res, 404, 'PRODUCT_NOT_FOUND', 'Producto no encontrado');
     }
-
     if (producto.comerciante.toString() !== req.usuario.id) {
-      return errorResponse(res, 'No tienes permiso para actualizar este producto', 403);
+      cleanupUploadedFiles(uploaded);
+      return structuredError(res, 403, 'FORBIDDEN', 'No tienes permiso para actualizar este producto');
     }
 
+    ensureMediaFromLegacy(producto);
     const b = req.body || {};
 
-    if (b.nombre != null && String(b.nombre).trim() !== '') {
-      producto.nombre = String(b.nombre).trim();
+    if (b.nombre != null && String(b.nombre).trim() !== '') producto.nombre = String(b.nombre).trim();
+    if (b.descripcion != null && String(b.descripcion).trim() !== '') producto.descripcion = String(b.descripcion).trim();
+    if (b.precio != null && String(b.precio).trim() !== '') producto.precio = coerceNumber(b.precio, producto.precio);
+    if (b.stock != null && String(b.stock).trim() !== '' && (!producto.variants?.length)) {
+      producto.stock = coerceNumber(b.stock, producto.stock);
     }
-    if (b.descripcion != null && String(b.descripcion).trim() !== '') {
-      producto.descripcion = String(b.descripcion).trim();
-    }
-    if (b.precio != null && String(b.precio).trim() !== '') {
-      producto.precio = parseFloat(b.precio);
-    }
-    if (b.stock != null && String(b.stock).trim() !== '') {
-      producto.stock = parseInt(b.stock, 10);
-    }
-    if (b.categoria != null && String(b.categoria).trim() !== '') {
-      producto.categoria = b.categoria;
-    }
+    if (b.categoria != null && String(b.categoria).trim() !== '') producto.categoria = b.categoria;
 
     if (b.tags) {
       try {
         producto.tags = parseJsonField(b.tags, b.tags);
       } catch {
-        producto.tags = String(b.tags)
-          .split(',')
-          .map((tag) => tag.trim())
-          .filter(Boolean);
+        producto.tags = String(b.tags).split(',').map((tag) => tag.trim()).filter(Boolean);
       }
     }
 
     if (b.variants != null) {
-      producto.variants = normalizeVariantsInput(b.variants, producto.nombre, producto.precio);
+      const { variants, error: variantError } = normalizeVariantsInput(b.variants, producto.nombre, producto.precio);
+      if (variantError) {
+        cleanupUploadedFiles(uploaded);
+        return structuredError(res, 400, variantError.code, variantError.message);
+      }
+      producto.variants = variants;
       producto.markModified('variants');
+    }
+
+    const stockError = validateStockPolicy({
+      stock: producto.stock,
+      variants: producto.variants,
+    });
+    if (stockError) {
+      cleanupUploadedFiles(uploaded);
+      return structuredError(res, 400, stockError.code, stockError.message);
     }
 
     if (b.especificaciones) {
       try {
-        const specs =
-          typeof b.especificaciones === 'string'
-            ? JSON.parse(b.especificaciones)
-            : b.especificaciones;
+        const specs = typeof b.especificaciones === 'string' ? JSON.parse(b.especificaciones) : b.especificaciones;
         producto.especificaciones = Object.entries(specs)
           .filter(([, value]) => value && String(value).trim() !== '')
           .map(([nombre, valor]) => ({ nombre, valor: String(valor) }));
@@ -468,18 +451,27 @@ const actualizarProducto = async (req, res) => {
       }
     }
 
-    if (req.files && req.files.length > 0) {
-      const nuevas = mapUploadedFilesToImagenes(req.files, producto.nombre);
-      const offset = producto.imagenes?.length || 0;
-      nuevas.forEach((img, idx) => {
-        img.orden = offset + idx;
-      });
-      producto.imagenes = [...(producto.imagenes || []), ...nuevas];
-      if (!producto.imagenPrincipal && nuevas.length > 0) {
-        producto.imagenPrincipal = nuevas[0].url;
-      }
-      producto.markModified('imagenes');
+    const removedIds = parseRemovedMediaIds(b.removedMediaIds);
+    if (removedIds.length) {
+      removeMediaByIds(producto, removedIds);
+      producto.markModified('media');
     }
+
+    const mediaOrder = parseMediaOrderField(b.mediaOrder);
+    if (mediaOrder) {
+      reorderMedia(producto, mediaOrder);
+      producto.markModified('media');
+    }
+
+    if (uploaded.length) {
+      const offset = producto.media?.length || 0;
+      const nuevos = buildMediaFromUploads(req.productImageFiles, req.productVideoFiles, producto.nombre, offset);
+      producto.media = [...(producto.media || []), ...nuevos];
+      producto.markModified('media');
+    }
+
+    syncLegacyImagesFromMedia(producto);
+    producto.markModified('imagenes');
 
     producto.estado = 'pending';
     producto.moderacion = {
@@ -492,17 +484,17 @@ const actualizarProducto = async (req, res) => {
     await producto.save();
     await producto.populate('comerciante', 'nombre email');
 
-    successResponse(
-      res,
-      'Producto actualizado exitosamente',
-      transformarProducto(producto.toObject({ virtuals: true })),
-    );
+    successResponse(res, 'Producto actualizado exitosamente', transformarProducto(producto.toObject({ virtuals: true })));
   } catch (error) {
+    cleanupUploadedFiles(uploaded);
     logger.error('product_update_failed', { requestId: req.requestId, message: error.message });
     if (error.name === 'ValidationError') {
-      return errorResponse(res, 'Error de validación', 400, error.errors);
+      return structuredError(res, 400, 'MONGOOSE_VALIDATION', 'Error de validación', error.errors);
     }
-    errorResponse(res, 'Error interno del servidor', 500);
+    if (error.message?.includes('variante')) {
+      return structuredError(res, 400, 'VARIANT_CONFLICT', error.message);
+    }
+    return structuredError(res, 500, 'PRODUCT_UPDATE_FAILED', 'Error interno del servidor');
   }
 };
 
@@ -598,24 +590,24 @@ const subirImagenes = async (req, res) => {
       return errorResponse(res, 'No tienes permiso para subir imágenes a este producto', 403);
     }
 
-    if (!req.files || req.files.length === 0) {
-      return errorResponse(res, 'No se han subido imágenes', 400);
+    const imageFiles = req.productImageFiles || [];
+    const videoFiles = req.productVideoFiles || [];
+    if (!imageFiles.length && !videoFiles.length) {
+      return structuredError(res, 400, 'NO_MEDIA_UPLOADED', 'No se han subido archivos de medios');
     }
 
-    const nuevas = mapUploadedFilesToImagenes(req.files, producto.nombre);
-    const offset = producto.imagenes?.length || 0;
-    nuevas.forEach((img, idx) => {
-      img.orden = offset + idx;
-    });
-    producto.imagenes = [...(producto.imagenes || []), ...nuevas];
-    if (!producto.imagenPrincipal && nuevas.length > 0) {
-      producto.imagenPrincipal = nuevas[0].url;
-    }
+    ensureMediaFromLegacy(producto);
+    const offset = producto.media?.length || 0;
+    const nuevos = buildMediaFromUploads(imageFiles, videoFiles, producto.nombre, offset);
+    producto.media = [...(producto.media || []), ...nuevos];
+    producto.markModified('media');
+    syncLegacyImagesFromMedia(producto);
     producto.markModified('imagenes');
     await producto.save();
 
     const doc = transformarProducto(producto.toObject({ virtuals: true }));
-    successResponse(res, 'Imágenes subidas exitosamente', {
+    successResponse(res, 'Medios subidos exitosamente', {
+      media: doc?.media || [],
       imagenes: doc?.imagenes || [],
       imagenPrincipal: doc?.imagenPrincipal,
     });

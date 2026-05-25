@@ -44,13 +44,30 @@ export const merchantService = {
     return handleApiResponse(response);
   },
 
-  createProduct: async (productData: FormData): Promise<Product> => {
-    const response = await api.post<ApiResponse<Product>>('/products', productData);
+  createProduct: async (
+    productData: FormData,
+    options?: { onUploadProgress?: (percent: number) => void },
+  ): Promise<Product> => {
+    const response = await api.post<ApiResponse<Product>>('/products', productData, {
+      onUploadProgress: (event) => {
+        if (!options?.onUploadProgress || !event.total) return;
+        options.onUploadProgress(Math.round((event.loaded * 100) / event.total));
+      },
+    });
     return handleApiResponse(response);
   },
 
-  updateProduct: async (id: string, productData: FormData): Promise<Product> => {
-    const response = await api.put<ApiResponse<Product>>(`/products/${id}`, productData);
+  updateProduct: async (
+    id: string,
+    productData: FormData,
+    options?: { onUploadProgress?: (percent: number) => void },
+  ): Promise<Product> => {
+    const response = await api.put<ApiResponse<Product>>(`/products/${id}`, productData, {
+      onUploadProgress: (event) => {
+        if (!options?.onUploadProgress || !event.total) return;
+        options.onUploadProgress(Math.round((event.loaded * 100) / event.total));
+      },
+    });
     return handleApiResponse(response);
   },
 

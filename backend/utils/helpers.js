@@ -340,7 +340,15 @@ const transformarProducto = (producto) => {
           ...img,
           url: transformarUrlImagen(img.url)
         };
-      }).filter(Boolean); // Remover elementos null
+      }).filter(Boolean);
+    }
+
+    if (productoTransformado.media && Array.isArray(productoTransformado.media)) {
+      productoTransformado.media = productoTransformado.media.map((m) => ({
+        ...m,
+        url: transformarUrlImagen(m.url),
+        thumbnail: m.thumbnail ? transformarUrlImagen(m.thumbnail) : undefined,
+      }));
     }
     
     return productoTransformado;

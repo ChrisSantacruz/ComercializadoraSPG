@@ -82,6 +82,22 @@ export interface RegisterData {
   nombreEmpresa?: string;
 }
 
+// Medios de producto (contrato canónico backend)
+export interface ProductMedia {
+  _id?: string;
+  type: 'image' | 'video';
+  url: string;
+  filename?: string;
+  mimeType?: string;
+  size?: number;
+  width?: number;
+  height?: number;
+  duration?: number;
+  thumbnail?: string;
+  order?: number;
+  alt?: string;
+}
+
 // Productos
 export interface ProductVariant {
   _id: string;
@@ -101,7 +117,9 @@ export interface Product {
   descripcion: string;
   precio: number;
   stock: number;
+  media?: ProductMedia[];
   imagenes: string[];
+  imagenPrincipal?: string;
   categoria: string | Category;
   comerciante: string | User;
   estado: 'pending' | 'approved' | 'rejected' | 'suspended' | 'aprobado' | 'pausado' | 'agotado' | 'pendiente' | 'rechazado' | 'suspendido';

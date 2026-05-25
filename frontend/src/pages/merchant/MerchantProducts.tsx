@@ -49,11 +49,14 @@ const MerchantProducts: React.FC = () => {
     loadData();
   }, [loadData]);
 
-  const handleCreateProduct = async (formData: FormData) => {
+  const handleCreateProduct = async (
+    formData: FormData,
+    options?: { onUploadProgress?: (percent: number) => void },
+  ) => {
     try {
       setActionLoading(true);
       setError(null);
-      const newProduct = await merchantService.createProduct(formData);
+      const newProduct = await merchantService.createProduct(formData, options);
       setCreatedProduct(newProduct);
       setSuccessMessage('Producto creado. Quedó pendiente de revisión antes de publicarse.');
       await loadData();
@@ -71,12 +74,15 @@ const MerchantProducts: React.FC = () => {
     }
   };
 
-  const handleUpdateProduct = async (formData: FormData) => {
+  const handleUpdateProduct = async (
+    formData: FormData,
+    options?: { onUploadProgress?: (percent: number) => void },
+  ) => {
     if (!editingProduct) return;
     
     try {
       setActionLoading(true);
-      await merchantService.updateProduct(editingProduct._id, formData);
+      await merchantService.updateProduct(editingProduct._id, formData, options);
       await loadData();
       setEditingProduct(null);
       setShowForm(false);

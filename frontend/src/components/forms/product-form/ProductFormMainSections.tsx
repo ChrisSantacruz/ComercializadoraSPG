@@ -8,50 +8,68 @@ import {
 } from '@heroicons/react/24/outline';
 import { Badge, FormField, Input, Textarea } from '../../ui';
 import { Category } from '../../../types';
-import { ImageDropzone } from './ImageDropzone';
+import { MediaDropzone } from './MediaDropzone';
 import { CategoryCombobox } from './CategoryCombobox';
 import { ProductFormSection } from './ProductFormSection';
 import { TagEditor } from './TagEditor';
-import { ImagePreview, ProductDraft, ProductFormErrors, ProductVariantDraft } from './types';
+import { ExistingMediaItem, MediaPreview, ProductDraft, ProductFormErrors, ProductVariantDraft } from './types';
 import { formatCurrency, getStockStatus, parseTags } from './productFormUtils';
 import { ProductVariantBuilder } from './ProductVariantBuilder';
 
 interface ProductFormMainSectionsProps {
   draft: ProductDraft;
   variants: ProductVariantDraft[];
+  hasVariants: boolean;
+  variantStockTotal: number;
   errors: ProductFormErrors;
   categories: Category[];
   categoriesLoading: boolean;
   categoryError: string | null;
-  images: ImagePreview[];
-  existingImages?: string[];
+  images: MediaPreview[];
+  videos: MediaPreview[];
+  existingMedia?: ExistingMediaItem[];
+  mediaError?: string | null;
+  uploadProgress?: number | null;
   disabled?: boolean;
   onDraftChange: (name: keyof ProductDraft, value: string) => void;
   onCategoryRetry: () => void;
   onVariantsChange: (variants: ProductVariantDraft[]) => void;
   onAddImages: (files: File[]) => void;
+  onAddVideos: (files: File[]) => void;
   onRemoveImage: (id: string) => void;
+  onRemoveVideo: (id: string) => void;
   onMoveImage: (id: string, direction: -1 | 1) => void;
+  onRemoveExisting?: (mediaId: string) => void;
+  onMoveExisting?: (mediaId: string, direction: -1 | 1) => void;
 }
 
 export const ProductFormMainSections: React.FC<ProductFormMainSectionsProps> = ({
   draft,
   variants,
+  hasVariants,
+  variantStockTotal,
   errors,
   categories,
   categoriesLoading,
   categoryError,
   images,
-  existingImages,
+  videos,
+  existingMedia,
+  mediaError,
+  uploadProgress,
   disabled,
   onDraftChange,
   onCategoryRetry,
   onVariantsChange,
   onAddImages,
+  onAddVideos,
   onRemoveImage,
+  onRemoveVideo,
   onMoveImage,
+  onRemoveExisting,
+  onMoveExisting,
 }) => {
-  const stockStatus = getStockStatus(draft.stock);
+  const stockStatus = getStockStatus(hasVariants ? String(variantStockTotal) : draft.stock);
   const tags = parseTags(draft.tags);
 
   const handleDraftChange =
@@ -98,15 +116,28 @@ export const ProductFormMainSections: React.FC<ProductFormMainSectionsProps> = (
         id="media"
         title="Multimedia"
         description="Imágenes limpias, ordenadas y con una portada visual clara para catálogo."
-        aside={<SectionMetric icon={PhotoIcon} label="Archivos nuevos" value={String(images.length)} />}
+        aside={
+          <SectionMetric
+            icon={PhotoIcon}
+            label="Medios nuevos"
+            value={`${images.length} img · ${videos.length} vid`}
+          />
+        }
       >
-        <ImageDropzone
+        <MediaDropzone
           images={images}
-          existingImages={existingImages}
+          videos={videos}
+          existingMedia={existingMedia}
           disabled={disabled}
+          uploadProgress={uploadProgress}
+          error={mediaError}
           onAddImages={onAddImages}
+          onAddVideos={onAddVideos}
           onRemoveImage={onRemoveImage}
+          onRemoveVideo={onRemoveVideo}
           onMoveImage={onMoveImage}
+          onRemoveExisting={onRemoveExisting}
+          onMoveExisting={onMoveExisting}
         />
       </ProductFormSection>
 
@@ -134,16 +165,22 @@ export const ProductFormMainSections: React.FC<ProductFormMainSectionsProps> = (
             </div>
           </FormField>
 
-          <FormField id="stock" label="Stock disponible" error={errors.stock} hint="Unidades vendibles.">
+          <FormField
+            id="stock"
+            label={hasVariants ? 'Stock total (variantes)' : 'Stock disponible'}
+            error={errors.stock}
+            hint={hasVariants ? 'Calculado automáticamente como suma del stock de variantes activas.' : 'Unidades vendibles.'}
+          >
             <Input
               type="number"
               name="stock"
-              value={draft.stock}
+              value={hasVariants ? String(variantStockTotal) : draft.stock}
               onChange={handleDraftChange('stock')}
               min="0"
-              disabled={disabled}
+              disabled={disabled || hasVariants}
+              readOnly={hasVariants}
               placeholder="24"
-              className={errors.stock ? 'border-error-300 focus:border-error-500 focus:ring-error-500/20' : ''}
+              className={errors.stock ? 'border-error-300 focus:border-error-500 focus:ring-error-500/20' : hasVariants ? 'bg-gray-50' : ''}
             />
           </FormField>
 

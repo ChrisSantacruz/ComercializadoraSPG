@@ -2,14 +2,15 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Product } from '../../types';
 import { useActiveCategoriesQuery } from '../../lib/query/hooks/useCategoriesQuery';
 import { log } from '../../lib/observability/logger';
-import { getAllImageUrls } from '../../utils/imageUtils';
+import { getProductImages, getProductVideos, MAX_IMAGE_BYTES, MAX_VIDEO_BYTES } from '../../utils/mediaUtils';
 import { Button, useNotifications } from '../ui';
 import { ProductFormHeader } from './product-form/ProductFormHeader';
 import { ProductFormMainSections } from './product-form/ProductFormMainSections';
 import { ProductFormSidebar } from './product-form/ProductFormSidebar';
 import { buildInitialDraft, buildInitialSpecs, buildInitialVariants, parseTags } from './product-form/productFormUtils';
 import {
-  ImagePreview,
+  ExistingMediaItem,
+  MediaPreview,
   ProductDraft,
   ProductFormErrors,
   ProductSpecsDraft,
@@ -18,7 +19,7 @@ import {
 
 interface ProductFormProps {
   product?: Product;
-  onSubmit: (formData: FormData) => void;
+  onSubmit: (formData: FormData, options?: { onUploadProgress?: (percent: number) => void }) => void;
   onCancel: () => void;
   isLoading?: boolean;
 }
@@ -27,24 +28,46 @@ const ProductForm: React.FC<ProductFormProps> = ({
   product,
   onSubmit,
   onCancel,
-  isLoading = false
+  isLoading = false,
 }) => {
   const { showError, showWarning } = useNotifications();
   const formRef = useRef<HTMLFormElement>(null);
   const submitLockedRef = useRef(false);
-  const imagesRef = useRef<ImagePreview[]>([]);
+  const imagesRef = useRef<MediaPreview[]>([]);
+  const videosRef = useRef<MediaPreview[]>([]);
   const categoryErrorNotifiedRef = useRef(false);
   const categoriesQuery = useActiveCategoriesQuery();
   const [formData, setFormData] = useState<ProductDraft>(() => buildInitialDraft(product));
   const [specsData] = useState<ProductSpecsDraft>(() => buildInitialSpecs(product));
   const [variants, setVariants] = useState<ProductVariantDraft[]>(() => buildInitialVariants(product));
-  const [images, setImages] = useState<ImagePreview[]>([]);
+  const [images, setImages] = useState<MediaPreview[]>([]);
+  const [videos, setVideos] = useState<MediaPreview[]>([]);
+  const [existingMedia, setExistingMedia] = useState<ExistingMediaItem[]>(() => {
+    const imgs = getProductImages(product).map((m, i) => ({
+      id: m._id || `legacy-img-${i}`,
+      type: 'image' as const,
+      url: m.url,
+      alt: m.alt,
+      order: m.order ?? i,
+    }));
+    const vids = getProductVideos(product).map((m, i) => ({
+      id: m._id || `legacy-vid-${i}`,
+      type: 'video' as const,
+      url: m.url,
+      order: m.order ?? i,
+    }));
+    return [...imgs, ...vids];
+  });
+  const [removedMediaIds, setRemovedMediaIds] = useState<string[]>([]);
   const [errors, setErrors] = useState<ProductFormErrors>({});
   const [isDirty, setIsDirty] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  const [mediaError, setMediaError] = useState<string | null>(null);
 
-  const existingImages = useMemo(
-    () => (product?.imagenes?.length ? getAllImageUrls(product.imagenes) : []),
-    [product?.imagenes],
+  const hasVariants = variants.length > 0;
+  const variantStockTotal = useMemo(
+    () => variants.filter((v) => v.activo).reduce((sum, v) => sum + (Number(v.stock) || 0), 0),
+    [variants],
   );
 
   const categories = categoriesQuery.data ?? [];
@@ -58,12 +81,10 @@ const ProductForm: React.FC<ProductFormProps> = ({
       categoryErrorNotifiedRef.current = false;
       return;
     }
-
     if (!categoryErrorNotifiedRef.current) {
       categoryErrorNotifiedRef.current = true;
       showError('Categorías no disponibles', categoryError || 'Reintenta la carga antes de guardar el producto.');
     }
-
     if (process.env.NODE_ENV === 'development') {
       log.warn('category_query_failed', {
         message: categoryError,
@@ -74,69 +95,138 @@ const ProductForm: React.FC<ProductFormProps> = ({
 
   useEffect(() => {
     submitLockedRef.current = isLoading;
+    if (!isLoading) setUploadProgress(null);
   }, [isLoading]);
 
   useEffect(() => {
     imagesRef.current = images;
   }, [images]);
 
+  useEffect(() => {
+    videosRef.current = videos;
+  }, [videos]);
+
   useEffect(
     () => () => {
       imagesRef.current.forEach((image) => URL.revokeObjectURL(image.url));
+      videosRef.current.forEach((video) => URL.revokeObjectURL(video.url));
     },
     [],
   );
 
-  const handleDraftChange = useCallback((name: keyof ProductDraft, value: string) => {
-    setFormData(prev => ({
-      ...prev,
-      [name]: value
-    }));
-    setIsDirty(true);
-    
-    if (errors[name]) {
-      setErrors(prev => ({ ...prev, [name]: '' }));
-    }
-  }, [errors]);
+  const handleDraftChange = useCallback(
+    (name: keyof ProductDraft, value: string) => {
+      setFormData((prev) => ({ ...prev, [name]: value }));
+      setIsDirty(true);
+      if (errors[name]) setErrors((prev) => ({ ...prev, [name]: '' }));
+    },
+    [errors],
+  );
 
-  const handleVariantsChange = useCallback((nextVariants: ProductVariantDraft[]) => {
-    setVariants(nextVariants);
-    setIsDirty(true);
-    if (errors.variants) {
-      setErrors(prev => ({ ...prev, variants: '' }));
+  const handleVariantsChange = useCallback(
+    (nextVariants: ProductVariantDraft[]) => {
+      setVariants(nextVariants);
+      setIsDirty(true);
+      if (errors.variants) setErrors((prev) => ({ ...prev, variants: '' }));
+    },
+    [errors.variants],
+  );
+
+  const validateMediaFiles = (files: File[], kind: 'image' | 'video'): string | null => {
+    const max = kind === 'image' ? MAX_IMAGE_BYTES : MAX_VIDEO_BYTES;
+    const tooBig = files.find((f) => f.size > max);
+    if (tooBig) {
+      return kind === 'image'
+        ? `"${tooBig.name}" supera 5 MB. Comprime la imagen o usa otro archivo.`
+        : `"${tooBig.name}" supera 50 MB.`;
     }
-  }, [errors.variants]);
+    return null;
+  };
 
   const handleAddImages = useCallback((files: File[]) => {
     if (files.length === 0) return;
-    const nextImages = files.map((file) => ({
+    const err = validateMediaFiles(files, 'image');
+    if (err) {
+      setMediaError(err);
+      showWarning('Archivo no válido', err);
+      return;
+    }
+    setMediaError(null);
+    const next = files.map((file) => ({
       id: `${file.name}-${file.lastModified}-${Math.random().toString(36).slice(2, 8)}`,
       file,
       url: URL.createObjectURL(file),
     }));
-    setImages(prev => [...prev, ...nextImages]);
+    setImages((prev) => [...prev, ...next]);
+    setIsDirty(true);
+  }, [showWarning]);
+
+  const handleAddVideos = useCallback((files: File[]) => {
+    if (files.length === 0) return;
+    const err = validateMediaFiles(files, 'video');
+    if (err) {
+      setMediaError(err);
+      showWarning('Archivo no válido', err);
+      return;
+    }
+    setMediaError(null);
+    const next = files.map((file) => ({
+      id: `${file.name}-${file.lastModified}-${Math.random().toString(36).slice(2, 8)}`,
+      file,
+      url: URL.createObjectURL(file),
+    }));
+    setVideos((prev) => [...prev, ...next]);
+    setIsDirty(true);
+  }, [showWarning]);
+
+  const handleRemoveImage = useCallback((id: string) => {
+    setImages((prev) => {
+      const target = prev.find((image) => image.id === id);
+      if (target) URL.revokeObjectURL(target.url);
+      return prev.filter((image) => image.id !== id);
+    });
     setIsDirty(true);
   }, []);
 
-  const handleRemoveImage = useCallback((id: string) => {
-    setImages(prev => {
-      const target = prev.find(image => image.id === id);
+  const handleRemoveVideo = useCallback((id: string) => {
+    setVideos((prev) => {
+      const target = prev.find((video) => video.id === id);
       if (target) URL.revokeObjectURL(target.url);
-      return prev.filter(image => image.id !== id);
+      return prev.filter((video) => video.id !== id);
     });
     setIsDirty(true);
   }, []);
 
   const handleMoveImage = useCallback((id: string, direction: -1 | 1) => {
-    setImages(prev => {
-      const currentIndex = prev.findIndex(image => image.id === id);
+    setImages((prev) => {
+      const currentIndex = prev.findIndex((image) => image.id === id);
       const nextIndex = currentIndex + direction;
       if (currentIndex < 0 || nextIndex < 0 || nextIndex >= prev.length) return prev;
-
       const next = [...prev];
       const [item] = next.splice(currentIndex, 1);
       next.splice(nextIndex, 0, item);
       return next;
+    });
+    setIsDirty(true);
+  }, []);
+
+  const handleRemoveExisting = useCallback((mediaId: string) => {
+    setExistingMedia((prev) => prev.filter((m) => m.id !== mediaId));
+    setRemovedMediaIds((prev) => (prev.includes(mediaId) ? prev : [...prev, mediaId]));
+    setIsDirty(true);
+  }, []);
+
+  const handleMoveExisting = useCallback((mediaId: string, direction: -1 | 1) => {
+    setExistingMedia((prev) => {
+      const imagesOnly = prev.filter((m) => m.type === 'image');
+      const others = prev.filter((m) => m.type !== 'image');
+      const idx = imagesOnly.findIndex((m) => m.id === mediaId);
+      const nextIdx = idx + direction;
+      if (idx < 0 || nextIdx < 0 || nextIdx >= imagesOnly.length) return prev;
+      const reordered = [...imagesOnly];
+      const [item] = reordered.splice(idx, 1);
+      reordered.splice(nextIdx, 0, item);
+      return [...reordered, ...others];
     });
     setIsDirty(true);
   }, []);
@@ -154,19 +244,23 @@ const ProductForm: React.FC<ProductFormProps> = ({
 
     if (!formData.nombre.trim()) newErrors.nombre = 'El nombre es requerido';
     if (!formData.descripcion.trim()) newErrors.descripcion = 'La descripción es requerida';
-    
+
     const precio = Number(formData.precio);
-    const stock = Number(formData.stock);
-    
     if (!formData.precio || precio <= 0) newErrors.precio = 'El precio debe ser mayor a 0';
-    if (formData.stock && stock < 0) newErrors.stock = 'El stock no puede ser negativo';
+
+    if (!hasVariants) {
+      const stock = Number(formData.stock);
+      if (formData.stock !== '' && stock < 0) newErrors.stock = 'El stock no puede ser negativo';
+    }
+
     if (!formData.categoria) newErrors.categoria = 'Selecciona una categoría';
     if (categoriesLoading) newErrors.categoria = 'Espera a que terminen de cargar las categorías.';
     if (categoryError) newErrors.categoria = 'Corrige la carga de categorías antes de guardar.';
     if (!categoriesLoading && !categoryError && categories.length === 0) {
       newErrors.categoria = 'No hay categorías activas disponibles para publicar productos.';
     }
-    if (variants.length > 0) {
+
+    if (hasVariants) {
       const invalidVariant = variants.some((variant) => {
         const price = Number(variant.precio);
         const variantStock = Number(variant.stock);
@@ -174,17 +268,17 @@ const ProductForm: React.FC<ProductFormProps> = ({
       });
       if (invalidVariant) {
         newErrors.variants = 'Todas las variantes deben tener precio mayor a 0 y stock válido.';
+      } else if (variantStockTotal <= 0) {
+        newErrors.variants = 'Al menos una variante activa debe tener stock mayor a 0.';
       }
     }
 
     setErrors(newErrors);
     const isValid = Object.keys(newErrors).length === 0;
-
     if (!isValid) {
       showWarning('Revisa el formulario', 'Hay campos obligatorios o valores inválidos antes de guardar.');
       focusFirstError();
     }
-
     return isValid;
   };
 
@@ -194,38 +288,51 @@ const ProductForm: React.FC<ProductFormProps> = ({
     if (!validateForm()) return;
 
     submitLockedRef.current = true;
+    setUploadProgress(0);
 
     const submitData = new FormData();
     submitData.append('nombre', formData.nombre);
     submitData.append('descripcion', formData.descripcion);
     submitData.append('precio', formData.precio.toString());
-    submitData.append('stock', formData.stock.toString());
-    submitData.append('categoria', formData.categoria);
-    
-    if (formData.tags.trim()) {
-      const tagsArray = parseTags(formData.tags);
-      submitData.append('tags', JSON.stringify(tagsArray));
+
+    if (hasVariants) {
+      submitData.append('stock', String(variantStockTotal));
+    } else {
+      submitData.append('stock', (formData.stock || '0').toString());
     }
-    
+
+    submitData.append('categoria', formData.categoria);
+
+    if (formData.tags.trim()) {
+      submitData.append('tags', JSON.stringify(parseTags(formData.tags)));
+    }
+
     const especificacionesFinales = Object.fromEntries(
-      Object.entries(specsData).filter(([, value]) => value.trim() !== '')
+      Object.entries(specsData).filter(([, value]) => value.trim() !== ''),
     );
-    
     if (Object.keys(especificacionesFinales).length > 0) {
       submitData.append('especificaciones', JSON.stringify(especificacionesFinales));
     }
 
-    if (variants.length > 0) {
+    if (hasVariants) {
       submitData.append('variants', JSON.stringify(variants));
     }
 
-    if (images.length > 0) {
-      images.forEach((image) => {
-        submitData.append('imagenes', image.file);
-      });
+    images.forEach((image) => submitData.append('imagenes', image.file));
+    videos.forEach((video) => submitData.append('videos', video.file));
+
+    if (product && removedMediaIds.length > 0) {
+      submitData.append('removedMediaIds', JSON.stringify(removedMediaIds));
     }
 
-    onSubmit(submitData);
+    const keptExisting = existingMedia.filter((m) => !removedMediaIds.includes(m.id));
+    if (product && keptExisting.length > 0) {
+      submitData.append('mediaOrder', JSON.stringify(keptExisting.map((m) => m.id)));
+    }
+
+    onSubmit(submitData, {
+      onUploadProgress: (percent) => setUploadProgress(percent),
+    });
   };
 
   return (
@@ -244,19 +351,28 @@ const ProductForm: React.FC<ProductFormProps> = ({
           <ProductFormMainSections
             draft={formData}
             variants={variants}
+            hasVariants={hasVariants}
+            variantStockTotal={variantStockTotal}
             errors={errors}
             categories={categories}
             categoriesLoading={categoriesLoading}
             categoryError={categoryError}
             images={images}
-            existingImages={existingImages}
+            videos={videos}
+            existingMedia={existingMedia}
+            mediaError={mediaError}
+            uploadProgress={uploadProgress}
             disabled={isLoading}
             onDraftChange={handleDraftChange}
             onCategoryRetry={() => void categoriesQuery.refetch()}
             onVariantsChange={handleVariantsChange}
             onAddImages={handleAddImages}
+            onAddVideos={handleAddVideos}
             onRemoveImage={handleRemoveImage}
+            onRemoveVideo={handleRemoveVideo}
             onMoveImage={handleMoveImage}
+            onRemoveExisting={product ? handleRemoveExisting : undefined}
+            onMoveExisting={product ? handleMoveExisting : undefined}
           />
 
           <div className="hidden lg:block">
@@ -264,7 +380,7 @@ const ProductForm: React.FC<ProductFormProps> = ({
               <ProductFormSidebar
                 draft={formData}
                 images={images}
-                existingCover={existingImages[0]}
+                existingCover={existingMedia.find((m) => m.type === 'image')?.url}
                 isEditing={!!product}
                 isLoading={isLoading}
                 isDirty={isDirty}
@@ -294,4 +410,4 @@ const ProductForm: React.FC<ProductFormProps> = ({
   );
 };
 
-export default ProductForm; 
+export default ProductForm;

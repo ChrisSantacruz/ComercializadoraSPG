@@ -5,10 +5,10 @@ const CloudinaryStorage = multerStorageCloudinary.CloudinaryStorage || multerSto
 const path = require('path');
 const logger = require('../utils/logger');
 
-// Configurar Cloudinary solo si las credenciales están disponibles
-const useCloudinary = process.env.CLOUDINARY_CLOUD_NAME && 
-                     process.env.CLOUDINARY_API_KEY && 
-                     process.env.CLOUDINARY_API_SECRET;
+const { useCloudinary: useCloudinaryFromConfig } = require('../config/storage');
+
+// Cloudinary deshabilitado por defecto (STORAGE_DRIVER=local). Ver config/storage.js
+const useCloudinary = useCloudinaryFromConfig;
 
 const cloudinarySdkReady =
   useCloudinary && cloudinary.v2 && typeof cloudinary.v2.uploader?.upload_stream === 'function';

@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { mediaSchema } = require('../schemas/mediaSchema');
 
 const variantImageSchema = new mongoose.Schema({
   url: {
@@ -139,13 +140,16 @@ const productSchema = new mongoose.Schema({
     default: 'unidad'
   },
   
-  // Imágenes del producto
+  // Medios canónicos (imágenes + videos) — contrato estable para frontend / futuro CDN
+  media: [mediaSchema],
+
+  // Imágenes legacy (sincronizadas desde media en pre-save)
   imagenes: [{
     url: {
       type: String,
       required: true
     },
-    publicId: String, // Para Cloudinary
+    publicId: String,
     alt: String,
     orden: {
       type: Number,
@@ -154,7 +158,7 @@ const productSchema = new mongoose.Schema({
   }],
   imagenPrincipal: {
     type: String,
-    required: false // Temporal: hacer opcional para pruebas
+    required: false
   },
 
   variants: [productVariantSchema],
@@ -399,6 +403,22 @@ productSchema.pre('save', function(next) {
     }
   }
 
+  // Sincronizar imagenes legacy desde media (imágenes ordenadas)
+  if (Array.isArray(this.media) && this.media.length > 0) {
+    const imageMedia = this.media
+      .filter((m) => m.type === 'image')
+      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    this.imagenes = imageMedia.map((m, i) => ({
+      url: m.url,
+      publicId: m.publicId || null,
+      alt: m.alt || `${this.nombre || 'Producto'} - Imagen ${i + 1}`,
+      orden: m.order ?? i,
+    }));
+    if (imageMedia.length > 0) {
+      this.imagenPrincipal = imageMedia[0].url;
+    }
+  }
+
   this.fechaActualizacion = new Date();
   next();
 });
@@ -527,6 +547,14 @@ productSchema.set('toJSON', {
       }));
     }
 
+    if (ret.media && Array.isArray(ret.media)) {
+      ret.media = ret.media.map((m) => ({
+        ...m,
+        url: getImageUrl(m.url),
+        thumbnail: m.thumbnail ? getImageUrl(m.thumbnail) : undefined,
+      }));
+    }
+
     if (ret.variants && Array.isArray(ret.variants)) {
       ret.variants = ret.variants.map(variant => ({
         ...variant,
@@ -555,6 +583,14 @@ productSchema.set('toObject', {
       ret.imagenes = ret.imagenes.map(img => ({
         ...img,
         url: getImageUrl(img.url)
+      }));
+    }
+
+    if (ret.media && Array.isArray(ret.media)) {
+      ret.media = ret.media.map((m) => ({
+        ...m,
+        url: getImageUrl(m.url),
+        thumbnail: m.thumbnail ? getImageUrl(m.thumbnail) : undefined,
       }));
     }
 

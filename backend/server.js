@@ -169,6 +169,12 @@ app.use((req, res, next) => {
 // Configuración de Passport
 app.use(passport.initialize());
 
+// Asegurar directorios de medios locales (productos / videos)
+const fs = require('fs');
+['uploads', 'uploads/products', 'uploads/videos', 'uploads/productos'].forEach((dir) => {
+  fs.mkdirSync(path.join(__dirname, dir), { recursive: true });
+});
+
 // Servir archivos estáticos (imágenes subidas) - Configuración mejorada
 app.use('/api/uploads', express.static(path.join(__dirname, 'uploads'), {
   setHeaders: (res, filePath) => {
@@ -176,7 +182,7 @@ app.use('/api/uploads', express.static(path.join(__dirname, 'uploads'), {
     res.setHeader('Cross-Origin-Embedder-Policy', 'unsafe-none');
     
     // Configurar cache para optimizar carga de imágenes
-    if (filePath.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
+    if (filePath.match(/\.(jpg|jpeg|png|gif|webp|mp4|webm|mov)$/i)) {
       res.setHeader('Cache-Control', 'public, max-age=86400'); // 1 día
     }
   }
@@ -188,7 +194,7 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads'), {
     res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
     res.setHeader('Cross-Origin-Embedder-Policy', 'unsafe-none');
     
-    if (filePath.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
+    if (filePath.match(/\.(jpg|jpeg|png|gif|webp|mp4|webm|mov)$/i)) {
       res.setHeader('Cache-Control', 'public, max-age=86400');
     }
   }

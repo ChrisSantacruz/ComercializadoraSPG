@@ -30,10 +30,25 @@ export interface ProductVariantDraft {
   isDefault: boolean;
 }
 
+/** @deprecated Use MediaPreview */
 export interface ImagePreview {
   id: string;
   file: File;
   url: string;
 }
 
-export type ProductFormErrors = Partial<Record<keyof ProductDraft | 'variants', string>>;
+export interface MediaPreview {
+  id: string;
+  file: File;
+  url: string;
+}
+
+export interface ExistingMediaItem {
+  id: string;
+  type: 'image' | 'video';
+  url: string;
+  alt?: string;
+  order?: number;
+}
+
+export type ProductFormErrors = Partial<Record<keyof ProductDraft | 'variants' | 'media', string>>;
