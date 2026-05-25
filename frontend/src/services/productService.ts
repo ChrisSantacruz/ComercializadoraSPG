@@ -117,21 +117,13 @@ export const productService = {
 
   // Crear producto (comerciante)
   createProduct: async (productData: FormData): Promise<Product> => {
-    const response = await api.post('/products', productData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-    });
+    const response = await api.post('/products', productData);
     return handleApiResponse<Product>(response);
   },
 
   // Actualizar producto (comerciante)
   updateProduct: async (id: string, productData: FormData): Promise<Product> => {
-    const response = await api.put(`/products/${id}`, productData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-    });
+    const response = await api.put(`/products/${id}`, productData);
     return handleApiResponse<Product>(response);
   },
 

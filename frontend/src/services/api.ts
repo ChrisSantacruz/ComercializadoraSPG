@@ -35,12 +35,33 @@ function shouldSkipAuthRetry(config?: InternalAxiosRequestConfig) {
   );
 }
 
+function clearMultipartContentType(config: InternalAxiosRequestConfig) {
+  if (!(config.data instanceof FormData) || !config.headers) return;
+
+  const headers = config.headers as Record<string, unknown> & {
+    delete?: (name: string) => void;
+  };
+  if (typeof headers.delete === 'function') {
+    headers.delete('Content-Type');
+  } else {
+    delete headers['Content-Type'];
+  }
+}
+
 api.interceptors.request.use(
   (config) => {
     const token = getAccessTokenFromStorage();
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
+
+    if (config.data instanceof FormData) {
+      clearMultipartContentType(config);
+      config.timeout = Math.max(config.timeout ?? 0, 120_000);
+      config.maxBodyLength = Infinity;
+      config.maxContentLength = Infinity;
+    }
+
     return config;
   },
   (error) => Promise.reject(error)

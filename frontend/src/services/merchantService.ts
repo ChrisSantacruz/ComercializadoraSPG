@@ -45,20 +45,12 @@ export const merchantService = {
   },
 
   createProduct: async (productData: FormData): Promise<Product> => {
-    const response = await api.post<ApiResponse<Product>>('/products', productData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-    });
+    const response = await api.post<ApiResponse<Product>>('/products', productData);
     return handleApiResponse(response);
   },
 
   updateProduct: async (id: string, productData: FormData): Promise<Product> => {
-    const response = await api.put<ApiResponse<Product>>(`/products/${id}`, productData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-    });
+    const response = await api.put<ApiResponse<Product>>(`/products/${id}`, productData);
     return handleApiResponse(response);
   },
 

@@ -125,11 +125,7 @@ export const authService = {
     const formData = new FormData();
     formData.append('avatar', file);
 
-    const response = await api.post('/users/avatar', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data'
-      }
-    });
+    const response = await api.post('/users/avatar', formData);
     const raw = handleApiResponse<unknown>(response);
     return normalizeUser(raw);
   },
@@ -138,11 +134,7 @@ export const authService = {
     const formData = new FormData();
     formData.append('banner', file);
 
-    const response = await api.post('/users/banner', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data'
-      }
-    });
+    const response = await api.post('/users/banner', formData);
     const raw = handleApiResponse<unknown>(response);
     return normalizeUser(raw);
   },

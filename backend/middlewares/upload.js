@@ -10,6 +10,9 @@ const useCloudinary = process.env.CLOUDINARY_CLOUD_NAME &&
                      process.env.CLOUDINARY_API_KEY && 
                      process.env.CLOUDINARY_API_SECRET;
 
+const cloudinarySdkReady =
+  useCloudinary && cloudinary.v2 && typeof cloudinary.v2.uploader?.upload_stream === 'function';
+
 if (useCloudinary) {
   cloudinary.v2.config({
     cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
@@ -17,16 +20,20 @@ if (useCloudinary) {
     api_secret: process.env.CLOUDINARY_API_SECRET,
     secure: true
   });
-  
-  // Fix crítico: garantizar que cloudinary.v2 existe para multer-storage-cloudinary
-  if (!cloudinary.v2) {
-    cloudinary.v2 = cloudinary;
+
+  if (cloudinarySdkReady) {
+    logger.info('upload_cloudinary_ready', { cloud: process.env.CLOUDINARY_CLOUD_NAME });
+  } else {
+    logger.error('upload_cloudinary_sdk_invalid', {
+      msg: 'Credenciales presentes pero cloudinary.v2.uploader no disponible — usando disco local',
+    });
   }
-  
-  logger.info('upload_cloudinary_ready', { cloud: process.env.CLOUDINARY_CLOUD_NAME });
 } else {
   logger.warn('upload_local_storage', { msg: 'Cloudinary no configurado — usando almacenamiento local' });
 }
+
+/** multer-storage-cloudinary accede a `opts.cloudinary.v2.uploader`, no a `cloudinary.v2` directo. */
+const useCloudinaryStorage = cloudinarySdkReady;
 
 // Filtro para validar tipos de archivo
 const fileFilter = (req, file, cb) => {
@@ -47,10 +54,10 @@ const fileFilter = (req, file, cb) => {
 // Configuración de storage para productos
 let productStorage;
 
-if (useCloudinary) {
+if (useCloudinaryStorage) {
   try {
     productStorage = new CloudinaryStorage({
-      cloudinary: cloudinary.v2,
+      cloudinary,
       params: {
         folder: 'comercializadora-spg/productos',
         allowed_formats: ['jpg', 'jpeg', 'png', 'gif', 'webp'],
@@ -94,10 +101,10 @@ if (useCloudinary) {
 // Configuración de storage para avatares
 let avatarStorage;
 
-if (useCloudinary) {
+if (useCloudinaryStorage) {
   try {
     avatarStorage = new CloudinaryStorage({
-      cloudinary: cloudinary.v2,
+      cloudinary,
       params: {
         folder: 'comercializadora-spg/avatares',
         allowed_formats: ['jpg', 'jpeg', 'png'],
@@ -140,10 +147,10 @@ if (useCloudinary) {
 // Configuración de storage para categorías
 let categoryStorage;
 
-if (useCloudinary) {
+if (useCloudinaryStorage) {
   try {
     categoryStorage = new CloudinaryStorage({
-      cloudinary: cloudinary.v2,
+      cloudinary,
       params: {
         folder: 'comercializadora-spg/categorias',
         allowed_formats: ['jpg', 'jpeg', 'png', 'svg'],
@@ -185,10 +192,10 @@ if (useCloudinary) {
 // Configuración de storage para reseñas (imágenes)
 let reviewStorage;
 
-if (useCloudinary) {
+if (useCloudinaryStorage) {
   try {
     reviewStorage = new CloudinaryStorage({
-      cloudinary: cloudinary.v2,
+      cloudinary,
       params: {
         folder: 'comercializadora-spg/reseñas',
         allowed_formats: ['jpg', 'jpeg', 'png'],
@@ -230,10 +237,10 @@ if (useCloudinary) {
 // Configuración de storage para videos de reseñas
 let reviewVideoStorage;
 
-if (useCloudinary) {
+if (useCloudinaryStorage) {
   try {
     reviewVideoStorage = new CloudinaryStorage({
-      cloudinary: cloudinary.v2,
+      cloudinary,
       params: {
         folder: 'comercializadora-spg/reseñas/videos',
         allowed_formats: ['mp4', 'mov', 'avi', 'webm'],
@@ -328,8 +335,12 @@ const subirImagenesReseña = multer({
   }
 }).array('imagenes', 5);
 
+const { applyCorsHeaders } = require('./corsConfig');
+
 // Middleware para manejar errores de multer
 const manejarErroresSubida = (error, req, res, next) => {
+  applyCorsHeaders(req, res);
+
   if (error instanceof multer.MulterError) {
     switch (error.code) {
       case 'LIMIT_FILE_SIZE':

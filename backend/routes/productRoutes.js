@@ -22,20 +22,7 @@ router.get('/:id', productController.getProductById);
 // @route   POST /api/products
 // @desc    Create new product
 // @access  Private (Merchant only)
-router.post('/', protect, authorize('comerciante'), (req, res, next) => {
-  // Hacer upload opcional - solo si hay archivos
-  if (req.headers['content-type'] && req.headers['content-type'].includes('multipart/form-data')) {
-    subirImagenesProducto(req, res, (err) => {
-      if (err) {
-        console.error('Error en upload de imágenes:', err);
-        // Continuar sin imágenes si hay error
-      }
-      next();
-    });
-  } else {
-    next();
-  }
-}, productController.crearProducto);
+router.post('/', protect, authorize('comerciante'), subirImagenesProducto, productController.crearProducto);
 
 // @route   PUT /api/products/:id
 // @desc    Update product
