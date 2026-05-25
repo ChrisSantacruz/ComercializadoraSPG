@@ -289,22 +289,43 @@ const actualizarCantidad = async (req, res) => {
 };
 
 // @desc    Eliminar producto del carrito
-// @route   DELETE /api/cart/remove/:productoId
+// @route   DELETE /api/cart/remove/:productId
 // @access  Private
 const eliminarDelCarrito = async (req, res) => {
   try {
-    const { productoId } = req.params;
+    const productoId = req.params.productId || req.params.productoId;
+    const { variantId } = req.query;
+
+    if (!productoId) {
+      return res.status(400).json({
+        exito: false,
+        mensaje: 'ID del producto es requerido',
+        codigo: 'VALIDATION_ERROR',
+        accion: 'Actualiza el carrito e intenta de nuevo',
+        requestId: req.requestId,
+      });
+    }
 
     const carrito = await Cart.findOne({ usuario: req.usuario.id });
     if (!carrito) {
       return errorResponse(res, 'Carrito no encontrado', 404);
     }
 
-    const { variantId } = req.query;
+    const lineasAntes = carrito.productos.length;
 
     carrito.productos = carrito.productos.filter(item =>
       !(item.producto.toString() === productoId && normalizeId(item.variantId) === normalizeId(variantId))
     );
+
+    if (carrito.productos.length === lineasAntes) {
+      return res.status(404).json({
+        exito: false,
+        mensaje: 'Producto no encontrado en el carrito',
+        codigo: 'CART_ITEM_NOT_FOUND',
+        accion: 'Actualiza el carrito e intenta de nuevo',
+        requestId: req.requestId,
+      });
+    }
 
     // Recalcular totales
     carrito.calcularTotales();
@@ -323,7 +344,11 @@ const eliminarDelCarrito = async (req, res) => {
     successResponse(res, 'Producto eliminado del carrito exitosamente', carrito);
 
   } catch (error) {
-    console.error('Error eliminando producto del carrito:', error);
+    logger.error('cart_remove_failed', {
+      requestId: req.requestId,
+      message: error.message,
+      productId: req.params.productId || req.params.productoId,
+    });
     errorResponse(res, 'Error interno del servidor', 500);
   }
 };
