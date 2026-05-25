@@ -471,17 +471,28 @@ const wompiController = {
             }
 
             const tx = remote.data?.data || remote.data;
-            if (!tx || String(tx.reference) !== String(orderId)) {
-                logger.warn('wompi_confirm_return_reference_mismatch', {
+            if (!tx) {
+                return res.status(502).json({
+                    exito: false,
+                    mensaje: 'Respuesta inválida de Wompi',
+                    codigo: 'WOMPI_INVALID_PAYLOAD',
+                    requestId: req.requestId
+                });
+            }
+
+            if (!wompiOrderSync.transactionBelongsToOrder(order, tx)) {
+                logger.warn('wompi_confirm_return_order_mismatch', {
                     requestId: req.requestId,
                     orderId,
                     transactionId: txId,
-                    receivedReference: tx?.reference
+                    receivedReference: tx.reference,
+                    paymentLinkId: tx.payment_link_id,
+                    orderPaymentLinkId: order.paymentInfo?.paymentLinkId
                 });
                 return res.status(400).json({
                     exito: false,
                     mensaje: 'La transacción no corresponde a este pedido',
-                    codigo: 'REFERENCE_MISMATCH',
+                    codigo: 'ORDER_TRANSACTION_MISMATCH',
                     requestId: req.requestId
                 });
             }
@@ -503,7 +514,7 @@ const wompiController = {
                 });
             }
 
-            const syncResult = await wompiOrderSync.syncOrderWithTransaction(tx);
+            const syncResult = await wompiOrderSync.syncOrderWithTransaction(tx, { order });
             if (!syncResult.ok) {
                 return res.status(400).json({
                     exito: false,

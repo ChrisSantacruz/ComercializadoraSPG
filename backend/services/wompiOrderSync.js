@@ -50,6 +50,64 @@ function expectedAmountInCents(order) {
   return Math.round(Number(order.total) * 100);
 }
 
+function isMongoObjectId(value) {
+  return /^[a-fA-F0-9]{24}$/.test(String(value || ''));
+}
+
+/**
+ * En payment links Wompi genera su propia `reference` (ej. zWEAR9_1779...), no el ObjectId del pedido.
+ * La vinculación correcta es `payment_link_id` + monto, o `reference` cuando coincide con el pedido.
+ */
+function transactionBelongsToOrder(order, transaction) {
+  if (!order || !transaction) return false;
+
+  const orderId = String(order._id);
+  const txRef = transaction.reference != null ? String(transaction.reference) : '';
+
+  if (txRef === orderId) return true;
+
+  const linkId = transaction.payment_link_id;
+  const orderLinkId = order.paymentInfo?.paymentLinkId;
+  if (linkId && orderLinkId && String(linkId) === String(orderLinkId)) {
+    return true;
+  }
+
+  if (
+    order.paymentInfo?.transactionId &&
+    transaction.id &&
+    String(order.paymentInfo.transactionId) === String(transaction.id)
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+async function resolveOrderFromTransaction(transaction, hintOrderId = null) {
+  if (!transaction) return null;
+
+  if (hintOrderId) {
+    const hinted = await Order.findById(hintOrderId);
+    if (hinted && transactionBelongsToOrder(hinted, transaction)) {
+      return hinted;
+    }
+  }
+
+  const ref = transaction.reference;
+  if (ref && isMongoObjectId(ref)) {
+    const byRef = await Order.findById(ref);
+    if (byRef) return byRef;
+  }
+
+  const linkId = transaction.payment_link_id;
+  if (linkId) {
+    const byLink = await Order.findOne({ 'paymentInfo.paymentLinkId': String(linkId) });
+    if (byLink) return byLink;
+  }
+
+  return null;
+}
+
 function normalizeWompiStatus(status) {
   const normalized = String(status || '').toUpperCase();
   return WOMPI_STATUSES[normalized] || null;
@@ -200,14 +258,19 @@ async function discountStockOnce(order) {
  * Sincroniza una orden con el objeto transaction devuelto por GET /v1/transactions/:id (fuente de verdad).
  * Idempotente para APPROVED (no doble descuento de stock).
  */
-async function syncOrderWithTransaction(transaction) {
-  if (!transaction || !transaction.reference) {
-    return { ok: false, reason: 'missing_reference' };
+async function syncOrderWithTransaction(transaction, options = {}) {
+  if (!transaction?.id) {
+    return { ok: false, reason: 'missing_transaction' };
   }
 
-  const order = await Order.findById(transaction.reference);
+  const order = options.order || await resolveOrderFromTransaction(transaction, options.hintOrderId);
   if (!order) {
-    return { ok: false, reason: 'order_not_found' };
+    return {
+      ok: false,
+      reason: 'order_not_found',
+      txReference: transaction.reference,
+      paymentLinkId: transaction.payment_link_id
+    };
   }
 
   const expected = expectedAmountInCents(order);
@@ -334,7 +397,7 @@ async function reconcileTransactionById(transactionId) {
     return { ok: false, reason: 'remote_fetch_failed', error: remote.error };
   }
   const tx = remote.data?.data || remote.data?.datos || remote.data;
-  if (!tx || !tx.reference) {
+  if (!tx?.id) {
     return { ok: false, reason: 'invalid_remote_payload' };
   }
   return syncOrderWithTransaction(tx);
@@ -347,5 +410,7 @@ module.exports = {
   reconcileTransactionById,
   expectedAmountInCents,
   normalizeWompiStatus,
+  transactionBelongsToOrder,
+  resolveOrderFromTransaction,
   WOMPI_STATUSES
 };

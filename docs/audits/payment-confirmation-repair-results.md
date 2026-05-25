@@ -28,6 +28,18 @@ Campos que rompían el flujo:
 - `payment_pending` se trataba como pedido visible.
 - `sendOrderConfirmationEmail` se importaba desde un módulo que no lo exportaba, por eso no salían comprobantes.
 
+### Seguimiento 2026-05-25 (producción)
+
+Seguía el 400 con log:
+
+- `status: APPROVED`
+- `orderId: 6a14de36701e53d085753f0a`
+- `receivedReference: zWEAR9_1779752506_SsTKLLWyY`
+
+Causa: en **payment links**, Wompi no usa el ObjectId del pedido en `transaction.reference`; genera una referencia propia. El código comparaba `tx.reference === orderId` y rechazaba pagos válidos.
+
+Fix: vincular por `payment_link_id` (guardado en `order.paymentInfo.paymentLinkId` al crear el link) y sincronizar con la orden del return, no solo por `reference`.
+
 ## Flujo Final
 
 1. Checkout crea una orden en `payment_pending`, no visible comercialmente.
