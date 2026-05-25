@@ -1,5 +1,6 @@
 const axios = require('axios');
 const crypto = require('crypto-js');
+const logger = require('../utils/logger');
 
 class WompiService {
     constructor() {
@@ -8,12 +9,54 @@ class WompiService {
         this.eventsSecret = process.env.WOMPI_EVENTS_SECRET;
         this.integritySecret = process.env.WOMPI_INTEGRITY_SECRET;
         this.apiUrl = process.env.WOMPI_API_URL || 'https://sandbox.wompi.co/v1';
-        
-        console.log('🔧 Wompi Service initialized:', {
-            publicKey: this.publicKey ? `${this.publicKey.substring(0, 20)}...` : 'NOT SET',
-            privateKey: this.privateKey ? `${this.privateKey.substring(0, 20)}...` : 'NOT SET',
-            apiUrl: this.apiUrl
+
+        this.environment = this.apiUrl.includes('sandbox') || String(this.publicKey || '').includes('test')
+            ? 'sandbox'
+            : 'production';
+
+        logger.info('wompi_service_initialized', {
+            environment: this.environment,
+            apiUrl: this.apiUrl,
+            hasPublicKey: Boolean(this.publicKey),
+            hasPrivateKey: Boolean(this.privateKey),
+            hasEventsSecret: Boolean(this.eventsSecret),
+            hasIntegritySecret: Boolean(this.integritySecret)
         });
+    }
+
+    validateStartupConfig({ failFast = process.env.NODE_ENV === 'production' } = {}) {
+        const missing = [];
+        if (!this.publicKey) missing.push('WOMPI_PUBLIC_KEY');
+        if (!this.privateKey) missing.push('WOMPI_PRIVATE_KEY');
+        if (!this.eventsSecret) missing.push('WOMPI_EVENTS_SECRET');
+        if (!this.integritySecret) missing.push('WOMPI_INTEGRITY_SECRET');
+        if (!this.apiUrl) missing.push('WOMPI_API_URL');
+
+        const isSandboxUrl = this.apiUrl.includes('sandbox.wompi.co');
+        const usesTestKeys = [this.publicKey, this.privateKey, this.eventsSecret, this.integritySecret]
+            .filter(Boolean)
+            .every((value) => String(value).includes('_test_') || String(value).startsWith('test_') || String(value).startsWith('pub_test') || String(value).startsWith('prv_test'));
+        const usesProdKeys = [this.publicKey, this.privateKey, this.eventsSecret, this.integritySecret]
+            .filter(Boolean)
+            .every((value) => String(value).includes('_prod_') || String(value).startsWith('prod_') || String(value).startsWith('pub_prod') || String(value).startsWith('prv_prod'));
+
+        const mixedEnvironment = !missing.length && ((isSandboxUrl && !usesTestKeys) || (!isSandboxUrl && !usesProdKeys));
+
+        if (missing.length || mixedEnvironment) {
+            logger.error('wompi_config_invalid', {
+                missing,
+                apiUrl: this.apiUrl,
+                environment: this.environment,
+                mixedEnvironment
+            });
+            if (failFast) {
+                throw new Error(`Wompi configuration invalid: ${missing.join(', ') || 'mixed environment keys'}`);
+            }
+            return false;
+        }
+
+        logger.info('wompi_config_valid', { environment: this.environment, apiUrl: this.apiUrl });
+        return true;
     }
 
     /**
@@ -69,13 +112,12 @@ class WompiService {
                         payload.customer_data.email = customerData.email.trim();
                     }
                     
-                    console.log('👤 Customer data added:', {
+                    logger.debug('wompi_customer_data_added', {
                         phone: payload.customer_data.phone_number,
-                        name: payload.customer_data.full_name,
                         hasEmail: !!payload.customer_data.email
                     });
                 } else {
-                    console.log('⚠️  Phone number invalid, using defaults');
+                    logger.warn('wompi_customer_phone_invalid', {});
                     payload.customer_data = {
                         phone_number: '3001234567',
                         full_name: 'Cliente ComercializadoraSPG',
@@ -84,7 +126,7 @@ class WompiService {
                     };
                 }
             } else {
-                console.log('⚠️  Customer data incomplete, using defaults');
+                logger.warn('wompi_customer_data_incomplete', {});
                 payload.customer_data = {
                     phone_number: '3001234567',
                     full_name: 'Cliente ComercializadoraSPG',
@@ -104,11 +146,10 @@ class WompiService {
                 };
             }
 
-            console.log('📦 Creating Wompi payment link:', {
+            logger.info('wompi_payment_link_create', {
                 amount_in_cents: payload.amount_in_cents,
                 name: payload.name,
-                customer: customerData?.name,
-                phone: customerData?.phone
+                reference
             });
 
             // Headers según documentación
@@ -124,9 +165,8 @@ class WompiService {
                 { headers }
             );
 
-            console.log('✅ Payment link created successfully:', {
+            logger.info('wompi_payment_link_created', {
                 id: response.data.data?.id,
-                generatedPermalink: `https://checkout.wompi.co/l/${response.data.data?.id}`
             });
 
             // Agregar el permalink generado a la respuesta
@@ -144,16 +184,12 @@ class WompiService {
             };
 
         } catch (error) {
-            console.error('❌ Error creating payment link:', {
+            logger.error('wompi_payment_link_failed', {
                 status: error.response?.status,
                 statusText: error.response?.statusText,
-                data: error.response?.data,
                 message: error.message,
-                config: {
-                    url: error.config?.url,
-                    method: error.config?.method,
-                    headers: error.config?.headers
-                }
+                url: error.config?.url,
+                method: error.config?.method
             });
             
             return {
@@ -173,7 +209,7 @@ class WompiService {
      */
     async getTransactionStatus(transactionId) {
         try {
-            console.log('🔍 Getting transaction status:', transactionId);
+            logger.debug('wompi_transaction_status_get', { transactionId });
             
             const response = await axios.get(
                 `${this.apiUrl}/transactions/${transactionId}`,
@@ -185,7 +221,7 @@ class WompiService {
                 }
             );
 
-            console.log('✅ Transaction status retrieved:', {
+            logger.info('wompi_transaction_status_retrieved', {
                 id: transactionId,
                 status: response.data.data?.status,
                 amount: response.data.data?.amount_in_cents
@@ -196,7 +232,11 @@ class WompiService {
                 data: response.data
             };
         } catch (error) {
-            console.error('❌ Error getting transaction status:', error.response?.data || error.message);
+            logger.error('wompi_transaction_status_failed', {
+                transactionId,
+                status: error.response?.status,
+                message: error.message
+            });
             return {
                 success: false,
                 error: error.response?.data || { message: error.message }
@@ -219,7 +259,7 @@ class WompiService {
                 data: response.data
             };
         } catch (error) {
-            console.error('Error getting payment link:', error.response?.data || error.message);
+            logger.error('wompi_payment_link_get_failed', { linkId, status: error.response?.status, message: error.message });
             return {
                 success: false,
                 error: error.response?.data || error.message
@@ -249,7 +289,7 @@ class WompiService {
                 permalink: presigned.permalink
             };
         } catch (error) {
-            console.error('Error creating acceptance token:', error.response?.data || error.message);
+            logger.error('wompi_acceptance_token_failed', { status: error.response?.status, message: error.message });
             return {
                 success: false,
                 error: error.response?.data || error.message
@@ -285,7 +325,7 @@ class WompiService {
                 data: response.data
             };
         } catch (error) {
-            console.error('Error tokenizing card:', error.response?.data || error.message);
+            logger.error('wompi_card_tokenize_failed', { status: error.response?.status, message: error.message });
             return {
                 success: false,
                 error: error.response?.data || error.message
@@ -337,7 +377,7 @@ class WompiService {
                 data: response.data
             };
         } catch (error) {
-            console.error('Error creating card transaction:', error.response?.data || error.message);
+            logger.error('wompi_card_transaction_failed', { status: error.response?.status, message: error.message });
             return {
                 success: false,
                 error: error.response?.data || error.message
@@ -373,7 +413,7 @@ class WompiService {
                 data: response.data
             };
         } catch (error) {
-            console.error('Error getting payment methods:', error.response?.data || error.message);
+            logger.error('wompi_payment_methods_failed', { status: error.response?.status, message: error.message });
             return {
                 success: false,
                 error: error.response?.data || error.message

@@ -1,6 +1,7 @@
 import React, { lazy, Suspense } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
+import { AppRole, hasRole } from '../auth/roles';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
 import RouteChunkFallback from '../components/routing/RouteChunkFallback';
 import { useRouteScrollRestoration } from '../hooks/useRouteScrollRestoration';
@@ -37,6 +38,7 @@ const MerchantProducts = lazy(() => import('../pages/merchant/MerchantProducts')
 const MerchantOrders = lazy(() => import('../pages/merchant/MerchantOrders'));
 const MerchantAnalytics = lazy(() => import('../pages/merchant/MerchantAnalytics'));
 const MerchantReviewsPage = lazy(() => import('../pages/merchant/MerchantReviewsPage'));
+const AdminDashboardPage = lazy(() => import('../pages/admin/AdminDashboardPage'));
 
 const PaymentSuccessPage = lazy(() => import('../pages/payment/PaymentSuccessPage'));
 const PaymentPendingPage = lazy(() => import('../pages/payment/PaymentPendingPage'));
@@ -44,7 +46,7 @@ const PaymentFailedPage = lazy(() => import('../pages/payment/PaymentFailedPage'
 
 const ProtectedRoute: React.FC<{
   children: React.ReactNode;
-  requiredRole?: 'cliente' | 'comerciante';
+  requiredRole?: AppRole | AppRole[];
 }> = ({ children, requiredRole }) => {
   const { isAuthenticated, user } = useAuthStore();
 
@@ -52,7 +54,8 @@ const ProtectedRoute: React.FC<{
     return <Navigate to="/login" replace />;
   }
 
-  if (requiredRole && user?.rol !== requiredRole) {
+  const allowedRoles = Array.isArray(requiredRole) ? requiredRole : requiredRole ? [requiredRole] : [];
+  if (allowedRoles.length > 0 && !hasRole(user?.rol ?? null, allowedRoles)) {
     return <Navigate to="/" replace />;
   }
 
@@ -69,8 +72,14 @@ const RoleBasedRedirect: React.FC = () => {
   }
 
   switch (user.rol) {
+    case 'admin':
+    case 'administrador':
+    case 'superadmin':
+      return <Navigate to="/admin" replace />;
+    case 'merchant':
     case 'comerciante':
       return <Navigate to="/merchant" replace />;
+    case 'user':
     case 'cliente':
     default:
       return <Navigate to="/profile" replace />;
@@ -153,7 +162,7 @@ const AppRoutes: React.FC = () => {
           <Route
             path="merchant"
             element={
-              <ProtectedRoute requiredRole="comerciante">
+              <ProtectedRoute requiredRole="merchant">
                 <MerchantDashboard />
               </ProtectedRoute>
             }
@@ -161,7 +170,7 @@ const AppRoutes: React.FC = () => {
           <Route
             path="merchant/products"
             element={
-              <ProtectedRoute requiredRole="comerciante">
+              <ProtectedRoute requiredRole="merchant">
                 <MerchantProducts />
               </ProtectedRoute>
             }
@@ -169,7 +178,7 @@ const AppRoutes: React.FC = () => {
           <Route
             path="merchant/orders"
             element={
-              <ProtectedRoute requiredRole="comerciante">
+              <ProtectedRoute requiredRole="merchant">
                 <MerchantOrders />
               </ProtectedRoute>
             }
@@ -177,7 +186,7 @@ const AppRoutes: React.FC = () => {
           <Route
             path="merchant/orders/:id"
             element={
-              <ProtectedRoute requiredRole="comerciante">
+              <ProtectedRoute requiredRole="merchant">
                 <OrderDetailPage />
               </ProtectedRoute>
             }
@@ -185,7 +194,7 @@ const AppRoutes: React.FC = () => {
           <Route
             path="merchant/analytics"
             element={
-              <ProtectedRoute requiredRole="comerciante">
+              <ProtectedRoute requiredRole="merchant">
                 <MerchantAnalytics />
               </ProtectedRoute>
             }
@@ -193,8 +202,16 @@ const AppRoutes: React.FC = () => {
           <Route
             path="merchant/reviews"
             element={
-              <ProtectedRoute requiredRole="comerciante">
+              <ProtectedRoute requiredRole="merchant">
                 <MerchantReviewsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="admin"
+            element={
+              <ProtectedRoute requiredRole={['admin', 'superadmin']}>
+                <AdminDashboardPage />
               </ProtectedRoute>
             }
           />

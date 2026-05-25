@@ -21,7 +21,7 @@ interface AuthState {
     email: string;
     password: string;
     telefono?: string;
-    rol?: 'cliente' | 'comerciante';
+    rol?: 'user' | 'merchant' | 'cliente' | 'comerciante';
     nombreEmpresa?: string;
   }) => Promise<void>;
   logout: () => Promise<void>;

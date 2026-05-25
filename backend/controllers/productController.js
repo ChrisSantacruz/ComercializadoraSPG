@@ -5,6 +5,10 @@ const { successResponse, errorResponse, paginateData, transformarProducto, trans
 const Review = require('../models/Review'); // Added Review model
 const Order = require('../models/Order'); // Added Order model
 const mongoose = require('mongoose');
+const logger = require('../utils/logger');
+
+const PUBLIC_PRODUCT_STATUSES = ['approved', 'aprobado'];
+const MERCHANT_VISIBLE_STATUSES = ['pending', 'approved', 'rejected', 'suspended', 'pendiente', 'aprobado', 'rechazado', 'suspendido', 'pausado', 'agotado'];
 
 /**
  * Construye documentos `imagenes` desde req.files (disco local o Cloudinary).
@@ -63,7 +67,7 @@ const obtenerProductos = async (req, res) => {
     const ordenar = req.query.ordenar || 'fechaCreacion';
 
     // Construir filtros
-    let filtros = { estado: 'aprobado' };
+    let filtros = { estado: { $in: PUBLIC_PRODUCT_STATUSES } };
 
     if (categoria) {
       filtros.categoria = categoria;
@@ -115,7 +119,7 @@ const obtenerProductos = async (req, res) => {
     }
 
     const productos = await Product.find(filtros)
-      .populate('comerciante', 'nombre email estadisticasComerciante')
+      .populate('comerciante', 'nombre nombreEmpresa descripcionEmpresa categoriaEmpresa sitioWeb verificado')
       .populate('categoria', 'nombre slug')
       .sort(sortOptions)
       .limit(limit * 1)
@@ -134,7 +138,7 @@ const obtenerProductos = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error obteniendo productos:', error);
+    logger.error('products_list_failed', { message: error.message });
     errorResponse(res, 'Error interno del servidor', 500);
   }
 };
@@ -148,17 +152,21 @@ const getProductById = async (req, res) => {
 
     // Validar que el ID sea un ObjectId válido
     if (!mongoose.Types.ObjectId.isValid(id)) {
-      console.error('❌ ID de producto inválido:', id);
+      logger.warn('product_invalid_id', { id });
       return errorResponse(res, 'ID de producto inválido', 400);
     }
 
     const product = await Product.findById(id)
       .populate('categoria', 'nombre descripcion')
-      .populate('comerciante', 'nombre email telefono direccion')
+      .populate('comerciante', 'nombre nombreEmpresa descripcionEmpresa categoriaEmpresa sitioWeb verificado')
       .lean();
 
     if (!product) {
       return errorResponse(res, 'Producto no encontrado', 404);
+    }
+
+    if (!PUBLIC_PRODUCT_STATUSES.includes(product.estado)) {
+      return errorResponse(res, 'Producto no disponible', 404);
     }
 
     // Obtener reseñas del producto
@@ -196,7 +204,7 @@ const getProductById = async (req, res) => {
         productosRelacionados = await Product.find({
           categoria: categoriaId,
           _id: { $ne: id },
-          estado: 'aprobado',
+          estado: { $in: PUBLIC_PRODUCT_STATUSES },
           stock: { $gt: 0 }
         })
           .populate('categoria', 'nombre')
@@ -204,29 +212,9 @@ const getProductById = async (req, res) => {
           .limit(6)
           .lean();
       } catch (relatedError) {
-        console.warn('⚠️  Error obteniendo productos relacionados:', relatedError.message);
+        logger.warn('product_related_failed', { productId: id, message: relatedError.message });
         // Continuar sin productos relacionados
       }
-    }
-
-    // Obtener estadísticas de ventas del producto
-    let ventasStats = [];
-    try {
-      ventasStats = await Order.aggregate([
-        { $match: { 'productos.producto': new mongoose.Types.ObjectId(id), estado: 'entregado' } },
-        { $unwind: '$productos' },
-        { $match: { 'productos.producto': new mongoose.Types.ObjectId(id) } },
-        {
-          $group: {
-            _id: null,
-            totalVendido: { $sum: '$productos.cantidad' },
-            totalIngresos: { $sum: { $multiply: ['$productos.precio', '$productos.cantidad'] } }
-          }
-        }
-      ]);
-    } catch (ventasError) {
-      console.warn('⚠️  Error obteniendo estadísticas de ventas:', ventasError.message);
-      // Continuar sin estadísticas de ventas
     }
 
     // Transformar URLs de imágenes
@@ -241,18 +229,13 @@ const getProductById = async (req, res) => {
         promedioCalificacion: reviewStats[0]?.promedioCalificacion || 0,
         distribucionCalificaciones
       },
-      productosRelacionados: productosRelacionadosTransformados,
-      estadisticasVentas: {
-        totalVendido: ventasStats[0]?.totalVendido || 0,
-        totalIngresos: ventasStats[0]?.totalIngresos || 0
-      }
+      productosRelacionados: productosRelacionadosTransformados
     };
 
     successResponse(res, 'Producto obtenido exitosamente', productData);
 
   } catch (error) {
-    console.error('❌ Error obteniendo producto:', error);
-    console.error('Stack trace:', error.stack);
+    logger.error('product_detail_failed', { productId: id, message: error.message });
     
     // Si es un error de cast (ID inválido que pasó la validación inicial)
     if (error.name === 'CastError') {
@@ -268,8 +251,11 @@ const getProductById = async (req, res) => {
 // @access  Private (Comerciante)
 const crearProducto = async (req, res) => {
   try {
-    console.log('📝 Creando producto:', req.body);
-    console.log('📁 Archivos recibidos:', req.files ? req.files.length : 0);
+    logger.debug('product_create_start', {
+      requestId: req.requestId,
+      merchantId: req.usuario.id,
+      files: req.files ? req.files.length : 0,
+    });
 
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -284,7 +270,10 @@ const crearProducto = async (req, res) => {
       stock: parseInt(req.body.stock) || 0,
       categoria: req.body.categoria,
       comerciante: req.usuario.id,
-      estado: 'aprobado' // Los productos se aprueban automáticamente
+      estado: 'pending',
+      moderacion: {
+        estado: 'pending'
+      }
     };
 
     // Procesar tags si existen
@@ -310,7 +299,7 @@ const crearProducto = async (req, res) => {
           .filter(([key, value]) => value && value.trim() !== '')
           .map(([nombre, valor]) => ({ nombre, valor }));
       } catch (e) {
-        console.log('⚠️  Error procesando especificaciones:', e);
+        logger.warn('product_specs_parse_failed', { requestId: req.requestId, message: e.message });
       }
     }
 
@@ -322,22 +311,24 @@ const crearProducto = async (req, res) => {
         datosProducto.imagenPrincipal = imagenesData[0].url;
       }
     } else {
-      console.log('📷 No se subieron imágenes para este producto');
+      logger.debug('product_create_no_images', { requestId: req.requestId });
     }
-
-    console.log('💾 Datos finales del producto:', datosProducto);
 
     const producto = new Product(datosProducto);
     await producto.save();
 
     await producto.populate('comerciante', 'nombre email');
 
-    console.log('✅ Producto creado exitosamente:', producto._id);
+    logger.info('product_created_pending_moderation', {
+      requestId: req.requestId,
+      productId: producto._id,
+      merchantId: req.usuario.id,
+    });
 
-    successResponse(res, 'Producto creado exitosamente y ya está disponible en el mercado.', transformarProducto(producto.toObject({ virtuals: true })), 201);
+    successResponse(res, 'Producto creado exitosamente. Quedó pendiente de revisión antes de publicarse.', transformarProducto(producto.toObject({ virtuals: true })), 201);
 
   } catch (error) {
-    console.error('❌ Error creando producto:', error);
+    logger.error('product_create_failed', { requestId: req.requestId, message: error.message });
     if (error.name === 'ValidationError') {
       return errorResponse(res, 'Error de validación', 400, error.errors);
     }
@@ -404,7 +395,7 @@ const actualizarProducto = async (req, res) => {
           .filter(([, value]) => value && String(value).trim() !== '')
           .map(([nombre, valor]) => ({ nombre, valor: String(valor) }));
       } catch (e) {
-        console.warn('⚠️  Error procesando especificaciones en actualización:', e.message);
+        logger.warn('product_update_specs_parse_failed', { requestId: req.requestId, message: e.message });
       }
     }
 
@@ -421,6 +412,14 @@ const actualizarProducto = async (req, res) => {
       producto.markModified('imagenes');
     }
 
+    producto.estado = 'pending';
+    producto.moderacion = {
+      estado: 'pending',
+      razonRechazo: undefined,
+      moderadoPor: undefined,
+      fechaModeracion: undefined,
+    };
+
     await producto.save();
     await producto.populate('comerciante', 'nombre email');
 
@@ -430,7 +429,7 @@ const actualizarProducto = async (req, res) => {
       transformarProducto(producto.toObject({ virtuals: true })),
     );
   } catch (error) {
-    console.error('Error actualizando producto:', error);
+    logger.error('product_update_failed', { requestId: req.requestId, message: error.message });
     if (error.name === 'ValidationError') {
       return errorResponse(res, 'Error de validación', 400, error.errors);
     }
@@ -464,7 +463,7 @@ const eliminarProducto = async (req, res) => {
     successResponse(res, 'Producto eliminado exitosamente');
 
   } catch (error) {
-    console.error('Error eliminando producto:', error);
+    logger.error('product_delete_failed', { requestId: req.requestId, message: error.message });
     errorResponse(res, 'Error interno del servidor', 500);
   }
 };
@@ -480,7 +479,7 @@ const obtenerMisProductos = async (req, res) => {
 
     let filtros = { comerciante: req.usuario.id };
 
-    if (estado) {
+    if (estado && MERCHANT_VISIBLE_STATUSES.includes(estado)) {
       filtros.estado = estado;
     }
 
@@ -495,8 +494,6 @@ const obtenerMisProductos = async (req, res) => {
     const total = await Product.countDocuments(filtros);
     const paginacion = paginateData(total, page, limit);
 
-    console.log('📦 Mis productos encontrados:', productos.length, 'de', total);
-
     // Transformar URLs de imágenes
     const productosTransformados = transformarProductos(productos);
 
@@ -506,7 +503,7 @@ const obtenerMisProductos = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error obteniendo mis productos:', error);
+    logger.error('merchant_products_failed', { requestId: req.requestId, message: error.message });
     errorResponse(res, 'Error interno del servidor', 500);
   }
 };
@@ -555,7 +552,7 @@ const subirImagenes = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error subiendo imágenes:', error);
+    logger.error('product_images_upload_failed', { requestId: req.requestId, message: error.message });
     errorResponse(res, 'Error interno del servidor', 500);
   }
 };

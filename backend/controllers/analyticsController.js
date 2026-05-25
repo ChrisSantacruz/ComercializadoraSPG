@@ -1,134 +1,16 @@
 const Order = require('../models/Order');
 const Product = require('../models/Product');
 const Review = require('../models/Review');
-const User = require('../models/User');
 const { successResponse, errorResponse } = require('../utils/helpers');
-
-// @desc    Generar datos de prueba para analytics
-// @route   POST /api/analytics/generate-test-data
-// @access  Private (Comerciante)
-const generarDatosPrueba = async (req, res) => {
-  try {
-    console.log('🧪 Generando datos de prueba para analytics...');
-    
-    const comercianteId = req.usuario.id;
-    
-    // Buscar o crear cliente
-    let cliente = await User.findOne({ rol: 'cliente' });
-    if (!cliente) {
-      cliente = new User({
-        nombre: 'Cliente Prueba',
-        email: 'cliente@prueba.com',
-        password: 'password123',
-        rol: 'cliente',
-        telefono: '3001234568',
-        direccion: 'Calle 456, Ciudad'
-      });
-      await cliente.save();
-      console.log('✅ Cliente de prueba creado');
-    }
-
-    // Crear productos de prueba
-    const productos = [];
-    for (let i = 1; i <= 5; i++) {
-      const producto = new Product({
-        nombre: `Producto Prueba ${i}`,
-        descripcion: `Descripción del producto ${i}`,
-        precio: 10000 + (i * 5000),
-        stock: Math.max(0, 10 - i), // Algunos productos agotados
-        categoria: 'Electrónicos',
-        comerciante: comercianteId,
-        estado: 'aprobado',
-        imagenes: [`producto-${i}.jpg`],
-        etiquetas: ['nuevo', 'popular']
-      });
-      await producto.save();
-      productos.push(producto);
-    }
-
-    // Crear pedidos de prueba
-    const estados = ['pendiente', 'confirmado', 'enviado', 'entregado'];
-    for (let i = 1; i <= 8; i++) {
-      const estado = estados[Math.floor(Math.random() * estados.length)];
-      const fechaCreacion = new Date();
-      fechaCreacion.setDate(fechaCreacion.getDate() - Math.floor(Math.random() * 30)); // Últimos 30 días
-      
-      const productosPedido = productos.slice(0, Math.floor(Math.random() * 3) + 1).map(producto => ({
-        producto: producto._id,
-        nombre: producto.nombre,
-        precio: producto.precio,
-        cantidad: Math.floor(Math.random() * 3) + 1,
-        subtotal: producto.precio * (Math.floor(Math.random() * 3) + 1),
-        comerciante: comercianteId
-      }));
-
-      const total = productosPedido.reduce((sum, item) => sum + item.subtotal, 0);
-
-      const pedido = new Order({
-        cliente: cliente._id,
-        productos: productosPedido,
-        total: total,
-        estado: estado,
-        fechaCreacion: fechaCreacion,
-        direccionEntrega: {
-          calle: 'Calle de Prueba',
-          ciudad: 'Ciudad de Prueba',
-          codigoPostal: '12345'
-        },
-        metodoPago: 'tarjeta_credito',
-        estadoPago: 'pagado'
-      });
-      await pedido.save();
-    }
-
-    // Crear reseñas de prueba
-    for (let i = 0; i < 5; i++) {
-      const producto = productos[i % productos.length];
-      const reseña = new Review({
-        usuario: cliente._id,
-        producto: producto._id,
-        pedido: (await Order.findOne())._id,
-        calificacion: Math.floor(Math.random() * 5) + 1,
-        titulo: `Reseña ${i + 1}`,
-        comentario: `Excelente producto ${i + 1}, muy recomendado.`,
-        aspectos: {
-          calidad: Math.floor(Math.random() * 5) + 1,
-          precio: Math.floor(Math.random() * 5) + 1,
-          entrega: Math.floor(Math.random() * 5) + 1,
-          atencion: Math.floor(Math.random() * 5) + 1
-        },
-        estado: 'aprobada',
-        verificada: true
-      });
-      await reseña.save();
-    }
-
-    successResponse(res, 'Datos de prueba generados exitosamente', {
-      productos: productos.length,
-      pedidos: 8,
-      reseñas: 5
-    });
-
-  } catch (error) {
-    console.error('❌ Error generando datos de prueba:', error);
-    errorResponse(res, 'Error generando datos de prueba', 500);
-  }
-};
+const logger = require('../utils/logger');
 
 // @desc    Obtener analytics completos del comerciante
 // @route   GET /api/analytics/merchant
 // @access  Private (Comerciante)
 const obtenerAnalyticsComerciante = async (req, res) => {
   try {
-    console.log('🔍 AnalyticsController: Iniciando request');
-    console.log('🔍 AnalyticsController: Usuario:', req.usuario);
-    console.log('🔍 AnalyticsController: Query:', req.query);
-    
     const comercianteId = req.usuario.id;
     const { periodo = '30d' } = req.query;
-    
-    console.log('🔍 AnalyticsController: Comerciante ID:', comercianteId);
-    console.log('🔍 AnalyticsController: Período:', periodo);
 
     // Calcular fechas según el período
     const hoy = new Date();
@@ -343,20 +225,20 @@ const obtenerAnalyticsComerciante = async (req, res) => {
       pedidosPorEstado: pedidosPorEstadoArray
     };
 
-    console.log('✅ AnalyticsController: Datos calculados exitosamente');
-    console.log('✅ AnalyticsController: Total ingresos:', analyticsData.totalIngresos);
-    console.log('✅ AnalyticsController: Pedidos en tránsito:', analyticsData.pedidosEnTransito);
-    console.log('✅ AnalyticsController: Productos agotados:', analyticsData.productosAgotados);
+    logger.debug('merchant_analytics_ready', {
+      requestId: req.requestId,
+      comercianteId,
+      periodo,
+    });
     
     successResponse(res, 'Analytics obtenidos exitosamente', analyticsData);
 
   } catch (error) {
-    console.error('❌ AnalyticsController: Error obteniendo analytics:', error);
+    logger.error('merchant_analytics_failed', { requestId: req.requestId, message: error.message });
     errorResponse(res, 'Error interno del servidor', 500);
   }
 };
 
 module.exports = {
-  generarDatosPrueba,
   obtenerAnalyticsComerciante
 }; 

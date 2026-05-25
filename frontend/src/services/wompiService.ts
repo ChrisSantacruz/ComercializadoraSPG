@@ -304,7 +304,7 @@ class WompiService {
 
   // Obtener clave pública de Wompi (desde env o config)
   getPublicKey(): string {
-    return process.env.REACT_APP_WOMPI_PUBLIC_KEY || 'pub_test_QGjOJpFWM45bFUuCpUTPQMYs2UGwXXZW';
+    return process.env.REACT_APP_WOMPI_PUBLIC_KEY || 'pub_test_vCPe0u28F8LelBmQ0FKvosSHMsrQAm7K';
   }
 
   // Verificar configuración de Wompi

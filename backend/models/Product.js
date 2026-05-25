@@ -109,8 +109,25 @@ const productSchema = new mongoose.Schema({
   // Estado del producto
   estado: {
     type: String,
-    enum: ['aprobado', 'pausado', 'agotado'],
-    default: 'aprobado'
+    enum: ['pending', 'approved', 'rejected', 'suspended', 'aprobado', 'pausado', 'agotado', 'pendiente', 'rechazado', 'suspendido'],
+    default: 'pending'
+  },
+  moderacion: {
+    estado: {
+      type: String,
+      enum: ['pending', 'approved', 'rejected', 'suspended'],
+      default: 'pending'
+    },
+    razonRechazo: {
+      type: String,
+      trim: true,
+      maxlength: [500, 'La razón de moderación no puede exceder 500 caracteres']
+    },
+    moderadoPor: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User'
+    },
+    fechaModeracion: Date
   },
   
   // Estadísticas del producto
@@ -271,7 +288,7 @@ productSchema.virtual('porcentajeDescuento').get(function() {
 
 // Virtual para disponibilidad
 productSchema.virtual('disponible').get(function() {
-  return this.estado === 'aprobado' && this.stock > 0;
+  return ['approved', 'aprobado'].includes(this.estado) && this.stock > 0;
 });
 
 // Virtual para estado de stock

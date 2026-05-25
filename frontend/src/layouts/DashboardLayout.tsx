@@ -9,6 +9,7 @@ import {
   HeartIcon,
   HomeIcon,
   MapPinIcon,
+  ShieldCheckIcon,
   ShoppingBagIcon,
   UserIcon,
 } from '@heroicons/react/24/outline';
@@ -19,6 +20,7 @@ import Footer from '../components/ui/Footer';
 import ErrorBoundary from '../components/ui/ErrorBoundary';
 import { Drawer } from '../components/ui/Drawer';
 import { BRAND_NAME } from '../components/nav/navData';
+import { isAdminRole, isMerchantRole } from '../auth/roles';
 
 type NavItem = { name: string; href: string; icon: React.ComponentType<{ className?: string }> };
 
@@ -46,7 +48,15 @@ const DashboardLayout: React.FC = () => {
       { name: 'Mis pedidos', href: '/orders', icon: ShoppingBagIcon },
     ];
 
-    if (user?.rol === 'comerciante') {
+    if (isAdminRole(user?.rol ?? null)) {
+      return [
+        { name: 'Inicio', href: '/', icon: HomeIcon },
+        { name: 'Admin', href: '/admin', icon: ShieldCheckIcon },
+        { name: 'Mi perfil', href: '/profile', icon: UserIcon },
+      ];
+    }
+
+    if (isMerchantRole(user?.rol ?? null)) {
       return [
         ...baseItems,
         { name: 'Dashboard', href: '/merchant', icon: ChartBarIcon },

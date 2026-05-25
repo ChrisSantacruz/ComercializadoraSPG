@@ -34,7 +34,12 @@ export const getImageUrl = (imageUrl: string | null | undefined | any): string =
   }
 
   // Si es una URL absoluta (http/https), retornarla tal como está
-  if (urlString.startsWith('http://') || urlString.startsWith('https://')) {
+  if (
+    urlString.startsWith('http://') ||
+    urlString.startsWith('https://') ||
+    urlString.startsWith('blob:') ||
+    urlString.startsWith('data:')
+  ) {
     return urlString;
   }
 

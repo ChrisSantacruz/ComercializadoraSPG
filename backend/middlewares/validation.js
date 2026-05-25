@@ -47,8 +47,8 @@ const validarRegistroUsuario = [
     
   body('rol')
     .optional()
-    .isIn(['cliente', 'comerciante'])
-    .withMessage('Rol inválido. Solo se permite cliente o comerciante'),
+    .isIn(['cliente', 'comerciante', 'user', 'merchant'])
+    .withMessage('Rol inválido. Solo se permite user/cliente o merchant/comerciante'),
     
   body('nombreEmpresa')
     .optional()

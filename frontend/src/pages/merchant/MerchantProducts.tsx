@@ -4,7 +4,8 @@ import merchantService from '../../services/merchantService';
 import { loadActiveCategories } from '../../lib/data/activeCategoriesResource';
 import ProductForm from '../../components/forms/ProductForm';
 import LoadingSpinner from '../../components/ui/LoadingSpinner';
-import { getFirstImageUrl, handleImageError } from '../../utils/imageUtils';
+import { getFirstImageUrl } from '../../utils/imageUtils';
+import ProductImage from '../../components/ui/ProductImage';
 
 const MerchantProducts: React.FC = () => {
   const [products, setProducts] = useState<Product[]>([]);
@@ -54,7 +55,7 @@ const MerchantProducts: React.FC = () => {
       setError(null);
       const newProduct = await merchantService.createProduct(formData);
       setCreatedProduct(newProduct);
-      setSuccessMessage('¡Producto creado exitosamente! Tu producto está siendo revisado y será publicado pronto.');
+      setSuccessMessage('Producto creado. Quedó pendiente de revisión antes de publicarse.');
       await loadData();
       setShowForm(false);
       
@@ -102,14 +103,33 @@ const MerchantProducts: React.FC = () => {
 
   const getStatusBadge = (estado: string) => {
     const styles = {
+      approved: 'bg-green-100 text-green-800',
       aprobado: 'bg-green-100 text-green-800',
+      pending: 'bg-amber-100 text-amber-800',
+      pendiente: 'bg-amber-100 text-amber-800',
+      rejected: 'bg-red-100 text-red-800',
+      rechazado: 'bg-red-100 text-red-800',
+      suspended: 'bg-gray-200 text-gray-800',
+      suspendido: 'bg-gray-200 text-gray-800',
       pausado: 'bg-yellow-100 text-yellow-800',
       agotado: 'bg-red-100 text-red-800'
+    };
+    const labels: Record<string, string> = {
+      approved: 'Aprobado',
+      aprobado: 'Aprobado',
+      pending: 'Pendiente',
+      pendiente: 'Pendiente',
+      rejected: 'Rechazado',
+      rechazado: 'Rechazado',
+      suspended: 'Suspendido',
+      suspendido: 'Suspendido',
+      pausado: 'Pausado',
+      agotado: 'Agotado',
     };
     
     return (
       <span className={`px-2 py-1 text-xs font-medium rounded-full ${styles[estado as keyof typeof styles] || 'bg-gray-100 text-gray-800'}`}>
-        {estado.charAt(0).toUpperCase() + estado.slice(1)}
+        {labels[estado] || estado.charAt(0).toUpperCase() + estado.slice(1)}
       </span>
     );
   };
@@ -227,6 +247,10 @@ const MerchantProducts: React.FC = () => {
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="">Todos los estados</option>
+              <option value="pending">Pendiente</option>
+              <option value="approved">Aprobado</option>
+              <option value="rejected">Rechazado</option>
+              <option value="suspended">Suspendido</option>
               <option value="aprobado">Aprobado</option>
               <option value="pausado">Pausado</option>
               <option value="agotado">Agotado</option>
@@ -264,11 +288,10 @@ const MerchantProducts: React.FC = () => {
         {products && Array.isArray(products) && products.filter(product => product && product._id).map((product) => (
           <div key={product._id} className="bg-white rounded-lg shadow-md overflow-hidden">
             <div className="relative h-48 bg-gray-200">
-              <img
+              <ProductImage
                 src={getFirstImageUrl(product.imagenes)}
                 alt={product.nombre}
                 className="w-full h-full object-cover"
-                onError={handleImageError}
                 loading="lazy"
               />
               <div className="absolute top-2 right-2">
@@ -296,6 +319,11 @@ const MerchantProducts: React.FC = () => {
               <div className="text-xs text-gray-500 mb-3">
                 {product.categoria ? getCategoryName(typeof product.categoria === 'string' ? product.categoria : product.categoria?._id || 'Sin categoría') : 'Sin categoría'}
               </div>
+              {product.moderacion?.razonRechazo ? (
+                <div className="mb-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                  Razón de rechazo: {product.moderacion.razonRechazo}
+                </div>
+              ) : null}
               
               <div className="flex space-x-2">
                 <button

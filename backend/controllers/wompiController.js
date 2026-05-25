@@ -1,6 +1,37 @@
 const wompiService = require('../services/wompiService');
 const wompiOrderSync = require('../services/wompiOrderSync');
 const Order = require('../models/Order');
+const crypto = require('crypto-js');
+const logger = require('../utils/logger');
+
+function getNested(obj, path) {
+    return String(path || '')
+        .split('.')
+        .reduce((acc, key) => (acc == null ? undefined : acc[key]), obj);
+}
+
+function verifyWompiEventSignature(eventData) {
+    const checksum = eventData?.signature?.checksum;
+    const properties = eventData?.signature?.properties;
+    const timestamp = eventData?.timestamp;
+    const secret = process.env.WOMPI_EVENTS_SECRET;
+
+    if (!checksum || !Array.isArray(properties) || !timestamp || !secret) {
+        return false;
+    }
+
+    const values = properties.map((property) => {
+        const normalizedPath = String(property).startsWith('data.')
+            ? String(property)
+            : `data.${property}`;
+        const value = getNested(eventData, normalizedPath);
+        return value == null ? '' : String(value);
+    });
+
+    const candidate = `${values.join('')}${timestamp}${secret}`;
+    const computed = crypto.SHA256(candidate).toString();
+    return computed === checksum;
+}
 
 const wompiController = {
     /**
@@ -114,12 +145,12 @@ const wompiController = {
             const { orderId } = req.body;
             const userId = req.usuario._id.toString();
 
-            console.log('🚀 Creating payment link for order:', orderId, 'user:', userId);
+            logger.info('wompi_order_payment_link_start', { requestId: req.requestId, orderId, userId });
 
             // Buscar la orden
             const order = await Order.findById(orderId).populate('cliente');
             if (!order) {
-                console.error('❌ Order not found:', orderId);
+                logger.warn('wompi_order_not_found', { requestId: req.requestId, orderId });
                 return res.status(404).json({
                     success: false,
                     message: 'Orden no encontrada'
@@ -128,7 +159,7 @@ const wompiController = {
 
             // Verificar que la orden pertenece al usuario
             if (order.cliente._id.toString() !== userId) {
-                console.error('❌ User not authorized for order:', userId, 'order owner:', order.cliente._id);
+                logger.warn('wompi_order_forbidden', { requestId: req.requestId, orderId, userId });
                 return res.status(403).json({
                     success: false,
                     message: 'No tienes permisos para procesar esta orden'
@@ -137,7 +168,7 @@ const wompiController = {
 
             // Verificar que la orden esté en estado pendiente
             if (order.estado !== 'pendiente') {
-                console.error('❌ Order not in pending state:', order.estado);
+                logger.warn('wompi_order_invalid_state', { requestId: req.requestId, orderId, state: order.estado });
                 return res.status(400).json({
                     success: false,
                     message: 'La orden no está en estado pendiente'
@@ -175,17 +206,9 @@ const wompiController = {
                 };
             }
 
-            console.log('📝 Customer data prepared:', {
-                name: customerData.name,
-                phone: customerData.phone,
-                email: customerData.email,
-                hasAddress: !!customerData.address,
-                hasDocument: !!customerData.document
-            });
-
             // Validar que tenemos los datos mínimos requeridos
             if (!customerData.name || !customerData.phone) {
-                console.error('❌ Missing required customer data:', { name: !!customerData.name, phone: !!customerData.phone });
+                logger.warn('wompi_customer_required_missing', { requestId: req.requestId, orderId });
                 return res.status(400).json({
                     success: false,
                     message: 'Faltan datos del cliente (nombre y teléfono son requeridos)'
@@ -201,11 +224,10 @@ const wompiController = {
                 redirectUrl: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/payment/wompi/return?orderId=${order._id}&reference=${order._id}`
             };
 
-            console.log('💳 Creating payment link with data:', {
+            logger.info('wompi_order_payment_link_create', {
+                requestId: req.requestId,
                 amount: paymentData.amount,
                 reference: paymentData.reference,
-                customerName: customerData.name,
-                redirectUrl: paymentData.redirectUrl
             });
 
             const result = await wompiService.createPaymentLink(paymentData);
@@ -223,10 +245,10 @@ const wompiController = {
                 order.estado = 'payment_pending';
                 await order.save();
 
-                console.log('✅ Payment link created and order updated:', {
+                logger.info('wompi_order_payment_link_created', {
+                    requestId: req.requestId,
                     orderId: order._id,
                     paymentLinkId: result.data.data.id,
-                    permalink: result.data.data.permalink
                 });
 
                 res.json({
@@ -239,7 +261,8 @@ const wompiController = {
                     }
                 });
             } else {
-                console.error('❌ Failed to create payment link:', {
+                logger.warn('wompi_order_payment_link_failed', {
+                    requestId: req.requestId,
                     error: result.error,
                     orderId: order._id
                 });
@@ -265,7 +288,7 @@ const wompiController = {
                 });
             }
         } catch (error) {
-            console.error('💥 Exception in createPaymentLink:', error);
+            logger.error('wompi_create_payment_link_exception', { requestId: req.requestId, message: error.message });
             res.status(500).json({
                 success: false,
                 message: 'Error interno del servidor',
@@ -293,6 +316,11 @@ const wompiController = {
                 return res.status(400).json({ error: 'invalid_json' });
             }
 
+            if (!verifyWompiEventSignature(eventData)) {
+                logger.warn('wompi_webhook_invalid_signature', { requestId: req.requestId });
+                return res.status(401).json({ error: 'invalid_signature' });
+            }
+
             const transactionId = wompiOrderSync.extractTransactionIdFromWebhookEvent(eventData);
             if (!transactionId) {
                 return res.status(200).json({ received: true, ignored: true });
@@ -305,7 +333,7 @@ const wompiController = {
 
             return res.status(200).json({ received: true });
         } catch (error) {
-            console.error('Error processing webhook:', error);
+            logger.error('wompi_webhook_failed', { requestId: req.requestId, message: error.message });
             return res.status(500).json({ error: 'Internal server error' });
         }
     },
@@ -379,7 +407,7 @@ const wompiController = {
                 }
             });
         } catch (error) {
-            console.error('confirmPaymentReturn:', error);
+            logger.error('wompi_confirm_return_failed', { requestId: req.requestId, message: error.message });
             return res.status(500).json({ exito: false, mensaje: 'Error interno del servidor' });
         }
     },
@@ -406,7 +434,7 @@ const wompiController = {
                 });
             }
         } catch (error) {
-            console.error('Error in getTransactionStatus:', error);
+            logger.error('wompi_get_transaction_status_failed', { requestId: req.requestId, message: error.message });
             res.status(500).json({
                 success: false,
                 message: 'Error interno del servidor'
@@ -437,7 +465,7 @@ const wompiController = {
                 });
             }
         } catch (error) {
-            console.error('Error in getAcceptanceToken:', error);
+            logger.error('wompi_acceptance_token_controller_failed', { requestId: req.requestId, message: error.message });
             res.status(500).json({
                 success: false,
                 message: 'Error interno del servidor'
@@ -475,7 +503,7 @@ const wompiController = {
                 });
             }
         } catch (error) {
-            console.error('Error in tokenizeCard:', error);
+            logger.error('wompi_tokenize_card_controller_failed', { requestId: req.requestId, message: error.message });
             res.status(500).json({
                 success: false,
                 message: 'Error interno del servidor'
@@ -547,7 +575,7 @@ const wompiController = {
                 });
             }
         } catch (error) {
-            console.error('Error in createCardTransaction:', error);
+            logger.error('wompi_card_transaction_controller_failed', { requestId: req.requestId, message: error.message });
             res.status(500).json({
                 success: false,
                 message: 'Error interno del servidor'
@@ -575,7 +603,7 @@ const wompiController = {
                 });
             }
         } catch (error) {
-            console.error('Error in getPaymentMethods:', error);
+            logger.error('wompi_payment_methods_controller_failed', { requestId: req.requestId, message: error.message });
             res.status(500).json({
                 success: false,
                 message: 'Error interno del servidor'

@@ -16,6 +16,7 @@ const {
 } = require('../utils/jwt');
 const { enviarEmailBienvenida, enviarEmailRecuperacion } = require('../utils/email');
 const { auth } = require('../config/firebaseAdmin');
+const logger = require('../utils/logger');
 
 // @desc    Registrar nuevo usuario
 // @route   POST /api/auth/registro
@@ -64,7 +65,7 @@ const registrarUsuario = async (req, res, next) => {
     try {
       await enviarEmailBienvenida(email, nombre, codigoVerificacion);
     } catch (emailError) {
-      console.error('Error enviando email de bienvenida:', emailError);
+      logger.error('auth_welcome_email_failed', { requestId: req.requestId, message: emailError.message });
       // No fallar el registro si el email falla
     }
 
@@ -257,26 +258,20 @@ const verificarEmailConCodigo = async (req, res, next) => {
 // @access  Public
 const reenviarCodigoVerificacion = async (req, res, next) => {
   try {
-    console.log('📧 Reenviar código - Solicitud recibida:', { email: req.body.email, body: req.body });
     const { email } = req.body;
 
     if (!email) {
-      console.log('❌ Email no proporcionado en la solicitud');
       return errorResponse(res, 'Email es requerido', 400);
     }
 
     // Buscar usuario
-    console.log('🔍 Buscando usuario con email:', email);
     const usuario = await User.findOne({ email });
 
     if (!usuario) {
       return successResponse(res, 'Si el correo está registrado y pendiente de verificación, recibirás un código.');
     }
 
-    console.log('✅ Usuario encontrado:', usuario.nombre, 'verificado:', usuario.verificado);
-
     if (usuario.verificado) {
-      console.log('⚠️ Usuario ya verificado, no se puede reenviar código');
       return errorResponse(res, 'Este usuario ya está verificado', 400);
     }
 
@@ -289,7 +284,6 @@ const reenviarCodigoVerificacion = async (req, res, next) => {
     await usuario.save();
 
     // Enviar email con nuevo código (de forma asíncrona para evitar bloqueos)
-    console.log('📧 Intentando enviar email de verificación a:', email);
     let mensajeRespuesta = 'Código de verificación generado.';
     
     try {
@@ -301,23 +295,19 @@ const reenviarCodigoVerificacion = async (req, res, next) => {
         )
       ]);
       
-      console.log('✅ Email enviado exitosamente:', resultadoEmail);
-      
       if (resultadoEmail.warning) {
-        console.log('⚠️ Email enviado con advertencia:', resultadoEmail.warning);
+        logger.warn('auth_verification_email_warning', { requestId: req.requestId, warning: resultadoEmail.warning });
         mensajeRespuesta = 'Código generado. El email puede tardar unos minutos en llegar.';
       } else if (resultadoEmail.exito) {
         mensajeRespuesta = 'Código de verificación enviado. Revisa tu email.';
       }
     } catch (emailError) {
-      console.error('❌ Error enviando email:', emailError.message);
-      console.error('Stack:', emailError.stack);
+      logger.error('auth_verification_email_failed', { requestId: req.requestId, message: emailError.message });
       
       // No fallar la respuesta, solo informar que el email puede tardar
       mensajeRespuesta = `Código generado. Si no recibes el email en unos minutos, inténtalo de nuevo. Error: ${emailError.message}`;
     }
 
-    console.log('✅ Proceso completado - código reenviado');
     successResponse(res, mensajeRespuesta, { 
       codigoGenerado: true, 
       email: email,
@@ -416,7 +406,7 @@ const solicitarRecuperacionPassword = async (req, res, next) => {
     try {
       await enviarEmailRecuperacion(email, usuario.nombre, tokenRecuperacion);
     } catch (emailError) {
-      console.error('Error enviando email de recuperación:', emailError);
+      logger.error('auth_recovery_email_failed', { requestId: req.requestId, message: emailError.message });
       return successResponse(res, 'Si el email existe, recibirás un enlace de recuperación.');
     }
 
@@ -534,7 +524,7 @@ const reenviarVerificacion = async (req, res, next) => {
     try {
       await enviarEmailBienvenida(email, usuario.nombre, tokenVerificacion);
     } catch (emailError) {
-      console.error('Error enviando email de verificación:', emailError);
+      logger.error('auth_verification_email_legacy_failed', { requestId: req.requestId, message: emailError.message });
       return res.status(500).json(
         errorResponse(res, 'Error enviando email de verificación', 400)
       );
@@ -574,7 +564,7 @@ const googleCallback = async (req, res, next) => {
     res.redirect(`${frontendURL}/auth/callback?code=${encodeURIComponent(code)}`);
 
   } catch (error) {
-    console.error('Error en callback de Google:', error);
+    logger.error('auth_google_callback_failed', { requestId: req.requestId, message: error.message });
     const frontendURL = process.env.FRONTEND_URL || 'http://localhost:3000';
     res.redirect(`${frontendURL}/login?error=oauth_error`);
   }
@@ -607,7 +597,7 @@ const facebookCallback = async (req, res, next) => {
     res.redirect(`${frontendURL}/auth/callback?code=${encodeURIComponent(code)}`);
 
   } catch (error) {
-    console.error('Error en callback de Facebook:', error);
+    logger.error('auth_facebook_callback_failed', { requestId: req.requestId, message: error.message });
     const frontendURL = process.env.FRONTEND_URL || 'http://localhost:3000';
     res.redirect(`${frontendURL}/login?error=oauth_error`);
   }
@@ -639,20 +629,12 @@ const firebaseLogin = async (req, res, next) => {
     let decodedToken;
     try {
       if (!auth) {
-        if (process.env.NODE_ENV === 'production') {
-          return errorResponse(res, 'Autenticación con proveedor no disponible', 503);
-        }
-        console.warn('⚠️ Firebase not available - mock verification (solo desarrollo)');
-        decodedToken = {
-          uid: `mock_${provider}_${Date.now()}`,
-          email: email || `mock@${provider}.com`,
-          name: nombre || 'Mock User'
-        };
+        return errorResponse(res, 'Autenticación con proveedor no disponible', 503);
       } else {
         decodedToken = await auth.verifyIdToken(idToken);
       }
     } catch (error) {
-      console.error('Error verificando token de Firebase:', error);
+      logger.warn('auth_firebase_token_invalid', { requestId: req.requestId, message: error.message });
       return errorResponse(res, 'Token de Firebase inválido', 401);
     }
 
@@ -724,7 +706,7 @@ const firebaseLogin = async (req, res, next) => {
       }
     }, 200);
   } catch (error) {
-    console.error('Error en firebaseLogin:', error);
+    logger.error('auth_firebase_login_failed', { requestId: req.requestId, message: error.message });
     return errorResponse(res, 'Error en la autenticación', 500);
   }
 };
@@ -843,7 +825,7 @@ const seleccionarRol = async (req, res, next) => {
       }
     }, 200);
   } catch (error) {
-    console.error('Error en seleccionarRol:', error);
+    logger.error('auth_select_role_failed', { requestId: req.requestId, message: error.message });
     return errorResponse(res, 'Error al seleccionar rol', 500);
   }
 };

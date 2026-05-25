@@ -26,7 +26,7 @@ const NavbarSearchStrip: React.FC<NavbarSearchStripProps> = ({
     e.preventDefault();
     const q = query.trim();
     if (!q) return;
-    navigate(`/productos?search=${encodeURIComponent(q)}`);
+    navigate(`/productos?q=${encodeURIComponent(q)}`);
     onClose();
   };
 
@@ -66,7 +66,7 @@ const NavbarSearchStrip: React.FC<NavbarSearchStripProps> = ({
                 type="button"
                 onClick={() => {
                   onQueryChange(suggestion);
-                  navigate(`/productos?search=${encodeURIComponent(suggestion)}`);
+                  navigate(`/productos?q=${encodeURIComponent(suggestion)}`);
                   onClose();
                 }}
                 className="rounded-full border border-white/15 bg-white/10 px-2.5 py-1 text-xs text-white/90 transition-colors hover:bg-white/18 sm:text-sm"

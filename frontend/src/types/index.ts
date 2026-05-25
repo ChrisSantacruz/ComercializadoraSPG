@@ -29,7 +29,7 @@ export interface User {
     codigoPostal?: string;
     pais?: string;
   };
-  rol: 'cliente' | 'comerciante' | null;
+  rol: 'user' | 'merchant' | 'admin' | 'superadmin' | 'cliente' | 'comerciante' | 'administrador' | null;
   nombreEmpresa?: string;
   descripcionEmpresa?: string;
   categoriaEmpresa?: string;
@@ -78,7 +78,7 @@ export interface RegisterData {
   email: string;
   password: string;
   telefono?: string;
-  rol?: 'cliente' | 'comerciante';
+  rol?: 'user' | 'merchant' | 'cliente' | 'comerciante';
   nombreEmpresa?: string;
 }
 
@@ -92,7 +92,13 @@ export interface Product {
   imagenes: string[];
   categoria: string | Category;
   comerciante: string | User;
-  estado: 'aprobado' | 'pausado' | 'agotado';
+  estado: 'pending' | 'approved' | 'rejected' | 'suspended' | 'aprobado' | 'pausado' | 'agotado' | 'pendiente' | 'rechazado' | 'suspendido';
+  moderacion?: {
+    estado: 'pending' | 'approved' | 'rejected' | 'suspended';
+    razonRechazo?: string;
+    fechaModeracion?: string;
+    moderadoPor?: string | User;
+  };
   especificaciones: Record<string, any>;
   tags: string[];
   fechaCreacion: string;

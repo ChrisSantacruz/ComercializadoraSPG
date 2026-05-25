@@ -27,12 +27,14 @@ const notificationRoutes = require('./routes/notificationRoutes');
 const analyticsRoutes = require('./routes/analyticsRoutes');
 const wompiRoutes = require('./routes/wompi');
 const maintenanceRoutes = require('./routes/maintenanceRoutes');
+const adminRoutes = require('./routes/adminRoutes');
 
 // Importar middlewares
 const errorHandler = require('./middlewares/errorHandler');
 const notFound = require('./middlewares/notFound');
 const requestContext = require('./middlewares/requestContext');
 const logger = require('./utils/logger');
+const wompiService = require('./services/wompiService');
 
 // Variables por defecto locales — alinear con frontend `config/env` (API 5001) y `.env.example`
 if (!process.env.MONGODB_URI) {
@@ -62,6 +64,13 @@ const passport = require('./config/passport');
 // Configuración de la aplicación
 const app = express();
 const PORT = Number(process.env.PORT) || 5001;
+
+try {
+  wompiService.validateStartupConfig({ failFast: isProduction });
+} catch (error) {
+  logger.error('startup_wompi_config_failed', { message: error.message });
+  process.exit(1);
+}
 
 // Configurar trust proxy para Render (necesario para rate limiting y CORS)
 app.set('trust proxy', 1);
@@ -107,6 +116,7 @@ app.use((err, req, res, next) => {
 
 // Middlewares generales
 app.use(morgan('combined'));
+app.use('/api/wompi/webhook', express.raw({ type: 'application/json' }));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cookieParser());
@@ -114,9 +124,6 @@ app.use(cookieParser());
 // CORS — production: whitelist only (DEC-AUTH-001 / staging hardening)
 const allowedOrigins = [
   'http://localhost:3000',
-  'http://localhost:3001',
-  'http://127.0.0.1:3000',
-  'http://127.0.0.1:3001',
   'https://andinoexpress.com',
   'https://www.andinoexpress.com',
   process.env.FRONTEND_URL,
@@ -135,7 +142,8 @@ const corsOptions = {
       return callback(null, true);
     }
     const normalized = String(origin).replace(/\/$/, '');
-    if (!isProduction || allowedOrigins.includes(normalized)) {
+    if (allowedOrigins.includes(normalized)) {
+      if (!isProduction) logger.debug('cors_allowed', { origin: normalized });
       return callback(null, true);
     }
     logger.warn('cors_blocked', { origin: normalized });
@@ -146,11 +154,11 @@ const corsOptions = {
   allowedHeaders: [
     'Content-Type',
     'Authorization',
-    'X-Requested-With',
-    'X-Request-Id',
     'Idempotency-Key',
-    'Origin',
+    'X-Request-Id',
     'Accept',
+    'Origin',
+    'X-Requested-With',
     'X-Signature',
     'X-Timestamp',
   ],
@@ -164,36 +172,8 @@ app.use(cors(corsOptions));
 // Manejador explícito de preflight OPTIONS
 app.options('*', cors(corsOptions));
 
-// Middleware adicional para manejar CORS en rutas de archivos estáticos
-app.use('/api/uploads', (req, res, next) => {
-  res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  res.header(
-    'Access-Control-Allow-Headers',
-    'Origin, X-Requested-With, Content-Type, Accept, Authorization, X-Request-Id, Idempotency-Key',
-  );
-
-  if (req.method === 'OPTIONS') {
-    res.sendStatus(200);
-  } else {
-    next();
-  }
-});
-
-app.use('/uploads', (req, res, next) => {
-  res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  res.header(
-    'Access-Control-Allow-Headers',
-    'Origin, X-Requested-With, Content-Type, Accept, Authorization, X-Request-Id, Idempotency-Key',
-  );
-  
-  if (req.method === 'OPTIONS') {
-    res.sendStatus(200);
-  } else {
-    next();
-  }
-});
+// Archivos estáticos pasan por la misma política CORS; no se permite wildcard.
+app.use(['/api/uploads', '/uploads'], cors(corsOptions));
 
 // Middleware de logging específico para rutas sensibles — sin credenciales en logs
 function redactBody(obj) {
@@ -234,13 +214,6 @@ app.use(passport.initialize());
 // Servir archivos estáticos (imágenes subidas) - Configuración mejorada
 app.use('/api/uploads', express.static(path.join(__dirname, 'uploads'), {
   setHeaders: (res, filePath) => {
-    // Configuración CORS más permisiva para archivos estáticos
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-    res.setHeader(
-      'Access-Control-Allow-Headers',
-      'Content-Type, Authorization, X-Requested-With, X-Request-Id, Idempotency-Key',
-    );
     res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
     res.setHeader('Cross-Origin-Embedder-Policy', 'unsafe-none');
     
@@ -254,12 +227,6 @@ app.use('/api/uploads', express.static(path.join(__dirname, 'uploads'), {
 // Ruta adicional para archivos estáticos sin prefijo /api
 app.use('/uploads', express.static(path.join(__dirname, 'uploads'), {
   setHeaders: (res, filePath) => {
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-    res.setHeader(
-      'Access-Control-Allow-Headers',
-      'Content-Type, Authorization, X-Requested-With, X-Request-Id, Idempotency-Key',
-    );
     res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
     res.setHeader('Cross-Origin-Embedder-Policy', 'unsafe-none');
     
@@ -275,7 +242,7 @@ connectDB();
 // Rutas principales
 app.get('/', (req, res) => {
   res.json({
-    message: '🚀 Bienvenido a Comercializadora SPG API',
+    message: 'Comercializadora SPG API',
     version: '1.0.0',
     status: 'Activo',
     timestamp: new Date().toISOString(),
@@ -309,136 +276,6 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-// Ruta de prueba para verificar que las rutas de auth funcionan
-app.get('/api/auth/test', (req, res) => {
-  res.json({
-    message: '✅ Auth routes are working',
-    timestamp: new Date().toISOString(),
-    availableRoutes: [
-      'POST /api/auth/register',
-      'POST /api/auth/login',
-      'POST /api/auth/reenviar-codigo',
-      'POST /api/auth/verificar-codigo'
-    ]
-  });
-});
-
-/* Bootstrap admin — OFF by default in production (use ENABLE_ADMIN_BOOTSTRAP=true only for controlled ops). */
-if (!isProduction || process.env.ENABLE_ADMIN_BOOTSTRAP === 'true') {
-  if (isProduction) {
-    logger.warn('admin_bootstrap_route_enabled', { msg: 'ENABLE_ADMIN_BOOTSTRAP is true' });
-  }
-  const User = require('./models/User');
-  app.post('/api/admin/create-super-admin', async (req, res) => {
-    try {
-      const { secretKey, adminData } = req.body;
-
-      const bootstrapSecret =
-        process.env.ADMIN_BOOTSTRAP_SECRET ||
-        (!isProduction ? 'CREATE_ADMIN_SECRET_2025' : null);
-      if (!bootstrapSecret || secretKey !== bootstrapSecret) {
-        return res.status(401).json({
-          success: false,
-          message: 'Clave incorrecta',
-          requestId: req.requestId,
-        });
-      }
-
-      const email = adminData?.email || 'chris@chrisadmin.com';
-      const password = adminData?.password || 'Pipeman06';
-      const nombre = adminData?.nombre || 'Chris Admin';
-
-      const existingAdmin = await User.findOne({ email });
-
-      if (existingAdmin) {
-        existingAdmin.password = password;
-        existingAdmin.rol = 'administrador';
-        existingAdmin.estado = 'activo';
-        existingAdmin.nombre = nombre;
-        await existingAdmin.save();
-
-        return res.json({
-          success: true,
-          message: 'Administrador actualizado',
-          admin: {
-            id: existingAdmin._id,
-            email: existingAdmin.email,
-            nombre: existingAdmin.nombre,
-            rol: existingAdmin.rol,
-          },
-          ...(isProduction
-            ? {}
-            : {
-                loginInfo: {
-                  email,
-                  password,
-                  loginUrl: 'http://localhost:3000/login',
-                },
-              }),
-          requestId: req.requestId,
-        });
-      }
-
-      const newAdminData = {
-        nombre,
-        email,
-        password,
-        telefono: '+57 300 123 4567',
-        rol: 'administrador',
-        estado: 'activo',
-        configuracion: {
-          pais: 'Colombia',
-          region: 'Bogotá',
-          idioma: 'es',
-          moneda: 'COP',
-        },
-        direccion: {
-          calle: 'Calle Principal 123',
-          ciudad: 'Bogotá',
-          departamento: 'Cundinamarca',
-          codigoPostal: '110111',
-          pais: 'Colombia',
-        },
-      };
-
-      const admin = new User(newAdminData);
-      await admin.save();
-
-      res.status(201).json({
-        success: true,
-        message: 'Administrador creado',
-        admin: {
-          id: admin._id,
-          email: admin.email,
-          nombre: admin.nombre,
-          rol: admin.rol,
-        },
-        ...(isProduction
-          ? {}
-          : {
-              loginInfo: {
-                email,
-                password,
-                loginUrl: 'http://localhost:3000/login',
-              },
-            }),
-        requestId: req.requestId,
-      });
-    } catch (error) {
-      logger.error('admin_bootstrap_failed', {
-        requestId: req.requestId,
-        message: error.message,
-      });
-      res.status(500).json({
-        success: false,
-        message: 'Error creando administrador',
-        requestId: req.requestId,
-        ...(process.env.NODE_ENV === 'development' && { details: error.message }),
-      });
-    }
-  });
-}
-
 // API Routes (después de la ruta temporal)
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
@@ -454,6 +291,7 @@ app.use('/api/notifications', notificationRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/wompi', wompiRoutes);
 app.use('/api/maintenance', maintenanceRoutes);
+app.use('/api/admin', adminRoutes);
 
 // Middlewares de manejo de errores
 app.use(notFound);

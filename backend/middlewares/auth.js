@@ -1,5 +1,24 @@
 const User = require('../models/User');
 const { verificarToken } = require('../utils/jwt');
+const logger = require('../utils/logger');
+
+const ROLE_ALIASES = {
+  user: ['user', 'cliente'],
+  cliente: ['user', 'cliente'],
+  merchant: ['merchant', 'comerciante'],
+  comerciante: ['merchant', 'comerciante'],
+  admin: ['admin', 'administrador'],
+  administrador: ['admin', 'administrador'],
+  superadmin: ['superadmin'],
+};
+
+const expandRoles = (roles) =>
+  new Set(roles.flatMap((role) => ROLE_ALIASES[role] || [role]));
+
+const hasRole = (actualRole, allowedRoles) => {
+  if (!actualRole) return false;
+  return expandRoles(allowedRoles).has(actualRole);
+};
 
 // Middleware para verificar token JWT
 const verificarTokenMiddleware = async (req, res, next) => {
@@ -59,7 +78,7 @@ const verificarTokenMiddleware = async (req, res, next) => {
       });
     }
 
-    console.error('Error en verificación de token:', error);
+    logger.error('auth_token_verify_failed', { message: error.message });
     return res.status(500).json({
       exito: false,
       mensaje: 'Error interno del servidor.'
@@ -77,7 +96,7 @@ const verificarRol = (...rolesPermitidos) => {
       });
     }
     
-    if (!rolesPermitidos.includes(req.usuario.rol)) {
+    if (!hasRole(req.usuario.rol, rolesPermitidos)) {
       return res.status(403).json({
         exito: false,
         mensaje: 'Acceso denegado. Permisos insuficientes.',
@@ -93,6 +112,7 @@ const verificarRol = (...rolesPermitidos) => {
 // Middleware específicos por rol
 const soloComerciante = verificarRol('comerciante');
 const soloCliente = verificarRol('cliente', 'comerciante');
+const soloAdmin = verificarRol('admin', 'superadmin');
 
 // Middleware para verificar propiedad del recurso
 const verificarPropiedad = (modeloNombre, campoPropietario = 'usuario') => {
@@ -124,7 +144,7 @@ const verificarPropiedad = (modeloNombre, campoPropietario = 'usuario') => {
       next();
       
     } catch (error) {
-      console.error('Error en verificación de propiedad:', error);
+      logger.error('resource_ownership_check_failed', { message: error.message, modeloNombre });
       return res.status(500).json({
         exito: false,
         mensaje: 'Error interno del servidor.'
@@ -136,7 +156,7 @@ const verificarPropiedad = (modeloNombre, campoPropietario = 'usuario') => {
 // Middleware para verificar si el comerciante puede realizar la acción
 const verificarComercianteActivo = async (req, res, next) => {
   try {
-    if (req.usuario.rol !== 'comerciante') {
+    if (!hasRole(req.usuario.rol, ['merchant'])) {
       return res.status(403).json({
         exito: false,
         mensaje: 'Solo los comerciantes pueden realizar esta acción.'
@@ -144,7 +164,7 @@ const verificarComercianteActivo = async (req, res, next) => {
     }
     
     // Verificar estadísticas del comerciante si es necesario
-    if (req.usuario.rol === 'comerciante') {
+    if (hasRole(req.usuario.rol, ['merchant'])) {
       // Aquí se pueden agregar validaciones adicionales
       // como límites de productos, verificación de documentos, etc.
     }
@@ -152,7 +172,7 @@ const verificarComercianteActivo = async (req, res, next) => {
     next();
     
   } catch (error) {
-    console.error('Error en verificación de comerciante:', error);
+    logger.error('merchant_check_failed', { message: error.message });
     return res.status(500).json({
       exito: false,
       mensaje: 'Error interno del servidor.'
@@ -184,7 +204,7 @@ const verificarCompraParaReseña = async (req, res, next) => {
     next();
     
   } catch (error) {
-    console.error('Error en verificación de compra:', error);
+    logger.error('review_purchase_check_failed', { message: error.message });
     return res.status(500).json({
       exito: false,
       mensaje: 'Error interno del servidor.'
@@ -219,7 +239,7 @@ const autenticacionOpcional = async (req, res, next) => {
     next();
     
   } catch (error) {
-    console.error('Error en autenticación opcional:', error);
+    logger.warn('optional_auth_failed', { message: error.message });
     next(); // Continuamos sin usuario autenticado
   }
 };
@@ -231,8 +251,10 @@ module.exports = {
   authorize: verificarRol,
   soloComerciante,
   soloCliente,
+  soloAdmin,
   verificarPropiedad,
   verificarComercianteActivo,
   verificarCompraParaReseña,
-  autenticacionOpcional
+  autenticacionOpcional,
+  hasRole
 }; 

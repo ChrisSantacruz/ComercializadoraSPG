@@ -46,7 +46,7 @@ const userSchema = new mongoose.Schema({
   },
   rol: {
     type: String,
-    enum: ['cliente', 'comerciante', null],
+    enum: ['user', 'merchant', 'admin', 'superadmin', 'cliente', 'comerciante', 'administrador', null],
     default: null // Null para usuarios OAuth que aún no seleccionan rol
   },
   
