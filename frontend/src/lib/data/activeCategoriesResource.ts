@@ -25,8 +25,7 @@ export function loadActiveCategories(): Promise<Category[]> {
 
   inflight = categoryService
     .getActiveCategories()
-    .then((raw) => {
-      const list = Array.isArray(raw) ? raw : [];
+    .then((list) => {
       cache = { data: list, expiresAt: Date.now() + TTL_MS };
       return list;
     })

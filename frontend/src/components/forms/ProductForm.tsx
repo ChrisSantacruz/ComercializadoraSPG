@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Product, Category } from '../../types';
-import { loadActiveCategories } from '../../lib/data/activeCategoriesResource';
+import { Product } from '../../types';
+import { useActiveCategoriesQuery } from '../../lib/query/hooks/useCategoriesQuery';
+import { log } from '../../lib/observability/logger';
 import { getAllImageUrls } from '../../utils/imageUtils';
 import { Button, useNotifications } from '../ui';
 import { ProductFormHeader } from './product-form/ProductFormHeader';
@@ -28,13 +29,12 @@ const ProductForm: React.FC<ProductFormProps> = ({
   onCancel,
   isLoading = false
 }) => {
-  const { showWarning } = useNotifications();
+  const { showError, showWarning } = useNotifications();
   const formRef = useRef<HTMLFormElement>(null);
   const submitLockedRef = useRef(false);
   const imagesRef = useRef<ImagePreview[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [categoriesLoading, setCategoriesLoading] = useState(true);
-  const [categoryError, setCategoryError] = useState<string | null>(null);
+  const categoryErrorNotifiedRef = useRef(false);
+  const categoriesQuery = useActiveCategoriesQuery();
   const [formData, setFormData] = useState<ProductDraft>(() => buildInitialDraft(product));
   const [specsData] = useState<ProductSpecsDraft>(() => buildInitialSpecs(product));
   const [variants, setVariants] = useState<ProductVariantDraft[]>(() => buildInitialVariants(product));
@@ -47,38 +47,30 @@ const ProductForm: React.FC<ProductFormProps> = ({
     [product?.imagenes],
   );
 
+  const categories = categoriesQuery.data ?? [];
+  const categoriesLoading = categoriesQuery.isPending || categoriesQuery.isFetching;
+  const categoryError = categoriesQuery.isError
+    ? categoriesQuery.error.message || 'No fue posible cargar las categorías.'
+    : null;
+
   useEffect(() => {
-    let mounted = true;
+    if (!categoriesQuery.isError) {
+      categoryErrorNotifiedRef.current = false;
+      return;
+    }
 
-    const loadCategories = async () => {
-      try {
-        setCategoriesLoading(true);
-        setCategoryError(null);
-        const categorias = await loadActiveCategories();
+    if (!categoryErrorNotifiedRef.current) {
+      categoryErrorNotifiedRef.current = true;
+      showError('Categorías no disponibles', categoryError || 'Reintenta la carga antes de guardar el producto.');
+    }
 
-        if (!mounted) return;
-
-        if (Array.isArray(categorias) && categorias.length > 0) {
-          setCategories(categorias);
-        } else {
-          setCategories([]);
-          setCategoryError('No hay categorías activas disponibles.');
-        }
-      } catch {
-        if (!mounted) return;
-        setCategories([]);
-        setCategoryError('No fue posible cargar las categorías. Reintenta antes de guardar.');
-      } finally {
-        if (mounted) setCategoriesLoading(false);
-      }
-    };
-
-    loadCategories();
-
-    return () => {
-      mounted = false;
-    };
-  }, []);
+    if (process.env.NODE_ENV === 'development') {
+      log.warn('category_query_failed', {
+        message: categoryError,
+        status: (categoriesQuery.error as { status?: number })?.status,
+      });
+    }
+  }, [categoriesQuery.error, categoriesQuery.isError, categoryError, showError]);
 
   useEffect(() => {
     submitLockedRef.current = isLoading;
@@ -169,6 +161,11 @@ const ProductForm: React.FC<ProductFormProps> = ({
     if (!formData.precio || precio <= 0) newErrors.precio = 'El precio debe ser mayor a 0';
     if (formData.stock && stock < 0) newErrors.stock = 'El stock no puede ser negativo';
     if (!formData.categoria) newErrors.categoria = 'Selecciona una categoría';
+    if (categoriesLoading) newErrors.categoria = 'Espera a que terminen de cargar las categorías.';
+    if (categoryError) newErrors.categoria = 'Corrige la carga de categorías antes de guardar.';
+    if (!categoriesLoading && !categoryError && categories.length === 0) {
+      newErrors.categoria = 'No hay categorías activas disponibles para publicar productos.';
+    }
     if (variants.length > 0) {
       const invalidVariant = variants.some((variant) => {
         const price = Number(variant.precio);
@@ -255,6 +252,7 @@ const ProductForm: React.FC<ProductFormProps> = ({
             existingImages={existingImages}
             disabled={isLoading}
             onDraftChange={handleDraftChange}
+            onCategoryRetry={() => void categoriesQuery.refetch()}
             onVariantsChange={handleVariantsChange}
             onAddImages={handleAddImages}
             onRemoveImage={handleRemoveImage}

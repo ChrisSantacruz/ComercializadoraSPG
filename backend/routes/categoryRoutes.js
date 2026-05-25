@@ -12,7 +12,7 @@ router.get('/', categoryController.obtenerCategorias);
 // @route   GET /api/categories/active
 // @desc    Get active categories only
 // @access  Public
-router.get('/active', categoryController.obtenerCategorias);
+router.get('/active', categoryController.obtenerCategoriasActivas);
 
 // @route   GET /api/categories/tree
 // @desc    Get category tree (with subcategories)
@@ -34,11 +34,6 @@ router.get('/:id', categoryController.obtenerCategoriaPorId);
 // @access  Private (Admin only)
 router.post('/', protect, authorize('administrador'), subirImagenCategoria, categoryController.crearCategoria);
 
-// @route   PUT /api/categories/:id
-// @desc    Update category
-// @access  Private (Admin only)
-router.put('/:id', protect, authorize('administrador'), subirImagenCategoria, categoryController.actualizarCategoria);
-
 // @route   PUT /api/categories/:id/approve
 // @desc    Approve/reject category
 // @access  Private (Admin only)
@@ -48,6 +43,11 @@ router.put('/:id/approve', protect, authorize('administrador'), categoryControll
 // @desc    Reorder categories
 // @access  Private (Admin only)
 router.put('/reorder', protect, authorize('administrador'), categoryController.reordenarCategorias);
+
+// @route   PUT /api/categories/:id
+// @desc    Update category
+// @access  Private (Admin only)
+router.put('/:id', protect, authorize('administrador'), subirImagenCategoria, categoryController.actualizarCategoria);
 
 // @route   DELETE /api/categories/:id
 // @desc    Delete category

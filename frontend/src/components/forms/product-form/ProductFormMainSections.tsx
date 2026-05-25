@@ -6,9 +6,10 @@ import {
   Squares2X2Icon,
   TagIcon,
 } from '@heroicons/react/24/outline';
-import { Badge, FormField, Input, Select, Textarea } from '../../ui';
+import { Badge, FormField, Input, Textarea } from '../../ui';
 import { Category } from '../../../types';
 import { ImageDropzone } from './ImageDropzone';
+import { CategoryCombobox } from './CategoryCombobox';
 import { ProductFormSection } from './ProductFormSection';
 import { TagEditor } from './TagEditor';
 import { ImagePreview, ProductDraft, ProductFormErrors, ProductVariantDraft } from './types';
@@ -26,6 +27,7 @@ interface ProductFormMainSectionsProps {
   existingImages?: string[];
   disabled?: boolean;
   onDraftChange: (name: keyof ProductDraft, value: string) => void;
+  onCategoryRetry: () => void;
   onVariantsChange: (variants: ProductVariantDraft[]) => void;
   onAddImages: (files: File[]) => void;
   onRemoveImage: (id: string) => void;
@@ -43,6 +45,7 @@ export const ProductFormMainSections: React.FC<ProductFormMainSectionsProps> = (
   existingImages,
   disabled,
   onDraftChange,
+  onCategoryRetry,
   onVariantsChange,
   onAddImages,
   onRemoveImage,
@@ -174,20 +177,17 @@ export const ProductFormMainSections: React.FC<ProductFormMainSectionsProps> = (
           error={errors.categoria}
           hint={categoryError || 'Se cargan desde el API; no se usan categorías inventadas.'}
         >
-          <Select
+          <CategoryCombobox
             name="categoria"
             value={draft.categoria}
-            onChange={handleDraftChange('categoria')}
-            disabled={disabled || categoriesLoading || !!categoryError}
-            className={errors.categoria ? 'border-error-300 focus:border-error-500 focus:ring-error-500/20' : ''}
-          >
-            <option value="">{categoriesLoading ? 'Cargando categorías...' : 'Seleccionar categoría'}</option>
-            {categories.map((category) => (
-              <option key={category._id} value={category._id}>
-                {category.nombre}
-              </option>
-            ))}
-          </Select>
+            categories={categories}
+            loading={categoriesLoading}
+            error={categoryError}
+            disabled={disabled}
+            invalid={Boolean(errors.categoria)}
+            onChange={(categoryId) => onDraftChange('categoria', categoryId)}
+            onRetry={onCategoryRetry}
+          />
         </FormField>
 
         <div>

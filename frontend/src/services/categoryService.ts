@@ -1,6 +1,26 @@
 import api, { handleApiResponse } from './api';
 import { Category, ApiResponse } from '../types';
 
+type ActiveCategoriesResponse =
+  | { success: true; categories: Category[] }
+  | { exito: true; datos: Category[] }
+  | Category[];
+
+const isCategoryArray = (value: unknown): value is Category[] => Array.isArray(value);
+
+const parseActiveCategoriesResponse = (payload: ActiveCategoriesResponse): Category[] => {
+  if (isCategoryArray(payload)) return payload;
+
+  if ('success' in payload) {
+    if (payload.success && isCategoryArray(payload.categories)) return payload.categories;
+    throw new Error('Respuesta inválida del endpoint de categorías activas.');
+  }
+
+  if (payload.exito && isCategoryArray(payload.datos)) return payload.datos;
+
+  throw new Error('Respuesta inválida del endpoint de categorías activas.');
+};
+
 export const categoryService = {
   // Obtener todas las categorías
   getCategories: async (): Promise<Category[]> => {
@@ -10,8 +30,10 @@ export const categoryService = {
 
   // Obtener categorías activas (para público)
   getActiveCategories: async (): Promise<Category[]> => {
-    const response = await api.get<ApiResponse<Category[]>>('/categories/active');
-    return handleApiResponse(response);
+    const response = await api.get<ActiveCategoriesResponse>('/categories/active', {
+      timeout: 10000,
+    });
+    return parseActiveCategoriesResponse(response.data);
   },
 
   // Obtener categoría por ID

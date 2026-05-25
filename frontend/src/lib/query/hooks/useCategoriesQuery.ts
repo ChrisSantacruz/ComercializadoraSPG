@@ -7,10 +7,7 @@ import { STALE_TIMES } from '../queryClient';
 export function useActiveCategoriesQuery() {
   return useQuery({
     queryKey: queryKeys.categories.active(),
-    queryFn: async (): Promise<Category[]> => {
-      const raw = await categoryService.getActiveCategories();
-      return Array.isArray(raw) ? raw : [];
-    },
+    queryFn: (): Promise<Category[]> => categoryService.getActiveCategories(),
     staleTime: STALE_TIMES.categories,
     gcTime: STALE_TIMES.categories * 2,
   });

@@ -6,6 +6,14 @@ const { enviarNotificacion } = require('../services/notificationService');
 
 const ACTIVE_CATEGORY_STATUSES = ['activa', 'activo', 'approved', 'aprobado'];
 
+const CATEGORY_PUBLIC_FIELDS = 'nombre descripcion slug icono color orden estado padre mostrarEnMenu destacada';
+
+const serializeCategory = (category) => ({
+  ...category,
+  _id: String(category._id),
+  padre: category.padre ? String(category.padre) : null
+});
+
 // @desc    Obtener todas las categorías aprobadas
 // @route   GET /api/categories
 // @access  Public
@@ -48,6 +56,27 @@ const obtenerCategorias = async (req, res) => {
   } catch (error) {
     console.error('Error obteniendo categorías:', error);
     errorResponse(res, 'Error interno del servidor', 500);
+  }
+};
+
+// @desc    Obtener categorías activas para formularios y navegación
+// @route   GET /api/categories/active
+// @access  Public
+const obtenerCategoriasActivas = async (req, res) => {
+  try {
+    const categorias = await Category.find({ estado: 'activa' })
+      .select(CATEGORY_PUBLIC_FIELDS)
+      .sort({ orden: 1, nombre: 1 })
+      .lean();
+
+    res.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
+    return res.status(200).json({
+      success: true,
+      categories: categorias.map(serializeCategory)
+    });
+  } catch (error) {
+    console.error('Error obteniendo categorías activas:', error);
+    return errorResponse(res, 'Error interno del servidor', 500);
   }
 };
 
@@ -460,6 +489,7 @@ const construirArbolCategorias = (categorias) => {
 
 module.exports = {
   obtenerCategorias,
+  obtenerCategoriasActivas,
   obtenerCategoriaPorId,
   crearCategoria,
   actualizarCategoria,
