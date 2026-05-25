@@ -1,0 +1,37 @@
+# API Rules
+
+## Endpoints
+
+- RESTful
+- Nombres consistentes
+- Versionado limpio
+
+## Responses
+
+Formato estándar:
+
+{
+  success: boolean,
+  message: string,
+  data: any,
+  error?: any
+}
+
+## Manejo de errores
+
+- try/catch obligatorio
+- errores claros
+- logs útiles
+- no filtrar stack traces al frontend
+
+## Validaciones
+
+- Validar request body
+- Validar params
+- Validar query params
+
+## Performance
+
+- paginación
+- filtros eficientes
+- evitar consultas innecesarias

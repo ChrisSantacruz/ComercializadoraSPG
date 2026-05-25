@@ -1,0 +1,28 @@
+---
+alwaysApply: false
+---
+
+# MongoDB Rules
+
+## Modelos
+
+- Schemas limpios
+- Validaciones correctas
+- Índices necesarios
+
+## Consultas
+
+- Lean queries cuando aplique
+- Populate solo si es necesario
+- Evitar consultas pesadas
+
+## Performance
+
+- Optimizar agregaciones
+- Evitar duplicación de datos
+- Diseñar relaciones correctamente
+
+## Seguridad
+
+- Nunca exponer datos sensibles
+- Sanitizar datos

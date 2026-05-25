@@ -1,0 +1,50 @@
+# Frontend Rules
+
+## Stack
+
+- React
+- TailwindCSS
+- Componentes reutilizables
+- Hooks limpios
+- Estado organizado
+
+## UI
+
+- Diseño premium moderno
+- Evitar apariencia genérica de IA
+- Espaciado limpio
+- Jerarquía visual clara
+- Responsive first
+- Mobile first
+
+## Componentes
+
+- Máximo 250 líneas por componente
+- Separar lógica y presentación
+- Reutilizar componentes existentes
+- Evitar props innecesarias
+
+## UX
+
+- Loading states elegantes
+- Empty states
+- Error states
+- Hover states suaves
+- Transiciones profesionales
+
+## Evitar
+
+- gradients exagerados
+- sombras excesivas
+- botones gigantes
+- layouts genéricos
+- colores saturados
+- dashboards típicos de IA
+
+## Inspiración
+
+- Stripe
+- Linear
+- Vercel
+- Notion
+- Framer

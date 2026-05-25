@@ -1,0 +1,48 @@
+---
+alwaysApply: false
+---
+
+# Backend Rules
+
+## Arquitectura
+
+- Controllers ligeros
+- Lógica en services
+- Validaciones separadas
+- Middlewares reutilizables
+- Separación clara de responsabilidades
+
+## API
+
+- APIs REST consistentes
+- Manejo correcto de errores
+- Status codes correctos
+- Validación estricta
+
+## Base de datos
+
+- Consultas optimizadas
+- Evitar queries duplicadas
+- Evitar N+1 queries
+- Índices cuando sean necesarios
+
+## Seguridad
+
+- Sanitizar inputs
+- Validar JWT
+- Manejar permisos
+- Nunca exponer información sensible
+
+## Escalabilidad
+
+- Servicios reutilizables
+- Modularidad
+- Logging claro
+- Manejo correcto de async/await
+
+## Evitar
+
+- lógica en rutas
+- funciones gigantes
+- duplicación
+- callbacks anidados
