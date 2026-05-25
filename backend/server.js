@@ -167,10 +167,30 @@ const corsOptions = {
   preflightContinue: false,
   maxAge: 86400,
 };
-app.use(cors(corsOptions));
+
+function isAdminBootstrapRequest(req) {
+  return (
+    process.env.ENABLE_ADMIN_BOOTSTRAP === 'true' &&
+    req.path === '/api/admin/bootstrap-superadmin' &&
+    ['GET', 'POST', 'OPTIONS'].includes(req.method)
+  );
+}
+
+app.use((req, res, next) => {
+  if (isAdminBootstrapRequest(req)) {
+    res.setHeader('Vary', 'Origin');
+    return next();
+  }
+  return cors(corsOptions)(req, res, next);
+});
 
 // Manejador explícito de preflight OPTIONS
-app.options('*', cors(corsOptions));
+app.options('*', (req, res, next) => {
+  if (isAdminBootstrapRequest(req)) {
+    return res.sendStatus(200);
+  }
+  return cors(corsOptions)(req, res, next);
+});
 
 // Archivos estáticos pasan por la misma política CORS; no se permite wildcard.
 app.use(['/api/uploads', '/uploads'], cors(corsOptions));
