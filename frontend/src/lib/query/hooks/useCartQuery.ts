@@ -3,6 +3,7 @@ import { cartService } from '../../../services/cartService';
 import type { Cart } from '../../../types';
 import { notifyCartError, notifyCartSuccess, type NotificationAction } from '../../appNotifications';
 import { patchCartLineQuantity, removeCartLine } from '../../cartOptimistic';
+import { getApiErrorMessage } from '../../apiErrors';
 import { useCartStore } from '../../../stores/cartStore';
 import { queryKeys } from '../queryKeys';
 import { STALE_TIMES } from '../queryClient';
@@ -54,6 +55,15 @@ export function useCartMutations() {
     }) => cartService.addProduct(productId, cantidad, variantId),
     onMutate: async () => {
       await qc.cancelQueries({ queryKey: queryKeys.cart.current() });
+      const previousCart = readCartSnapshot(qc);
+      return { previousCart } as { previousCart: Cart | null };
+    },
+    onError: (error: unknown, _vars, ctx) => {
+      if (ctx?.previousCart !== undefined) {
+        qc.setQueryData(queryKeys.cart.current(), ctx.previousCart);
+        useCartStore.getState().syncCart(ctx.previousCart);
+      }
+      notifyCartError('Carrito', getApiErrorMessage(error, 'Error al agregar producto'));
     },
     onSuccess: (cart, { options }) => {
       setCartCache(cart);
@@ -64,10 +74,6 @@ export function useCartMutations() {
           options?.action,
         );
       }
-    },
-    onError: (error: unknown) => {
-      const message = error instanceof Error ? error.message : 'Error al agregar producto';
-      notifyCartError('Carrito', message);
     },
     onSettled: invalidate,
   });
@@ -91,10 +97,7 @@ export function useCartMutations() {
         qc.setQueryData(queryKeys.cart.current(), ctx.previousCart);
         useCartStore.getState().syncCart(ctx.previousCart);
       }
-      notifyCartError(
-        'Carrito',
-        error instanceof Error ? error.message : 'Error al actualizar cantidad',
-      );
+      notifyCartError('Carrito', getApiErrorMessage(error, 'Error al actualizar cantidad'));
     },
     onSuccess: (cart) => setCartCache(cart),
     onSettled: invalidate,
@@ -118,10 +121,7 @@ export function useCartMutations() {
         qc.setQueryData(queryKeys.cart.current(), ctx.previousCart);
         useCartStore.getState().syncCart(ctx.previousCart);
       }
-      notifyCartError(
-        'Carrito',
-        error instanceof Error ? error.message : 'Error al eliminar producto',
-      );
+      notifyCartError('Carrito', getApiErrorMessage(error, 'Error al eliminar producto'));
     },
     onSuccess: (cart) => {
       setCartCache(cart);
@@ -145,10 +145,7 @@ export function useCartMutations() {
         qc.setQueryData(queryKeys.cart.current(), ctx.previousCart);
         useCartStore.getState().syncCart(ctx.previousCart);
       }
-      notifyCartError(
-        'Carrito',
-        error instanceof Error ? error.message : 'Error al limpiar carrito',
-      );
+      notifyCartError('Carrito', getApiErrorMessage(error, 'Error al limpiar carrito'));
     },
     onSuccess: () => {
       setCartCache(null);

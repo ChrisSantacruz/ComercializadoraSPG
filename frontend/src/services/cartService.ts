@@ -10,10 +10,14 @@ export const cartService = {
 
   // Agregar producto al carrito
   addProduct: async (productId: string, cantidad: number, variantId?: string): Promise<Cart> => {
+    const qty = Math.max(1, Math.min(99, Math.floor(Number(cantidad)) || 1));
+    if (!productId || String(productId).trim() === '') {
+      throw new Error('No se pudo identificar el producto. Recarga la página e inténtalo de nuevo.');
+    }
     const response = await api.post('/cart/add', {
-      productoId: productId,
-      cantidad,
-      ...(variantId ? { variantId } : {}),
+      productoId: String(productId).trim(),
+      cantidad: qty,
+      ...(variantId ? { variantId: String(variantId).trim() } : {}),
     });
     return handleApiResponse<Cart>(response);
   },
@@ -22,8 +26,9 @@ export const cartService = {
   updateQuantity: async (productId: string, cantidad: number, variantId?: string): Promise<Cart> => {
     try {
       // Intentar la nueva ruta primero
+      const qty = Math.max(1, Math.min(99, Math.floor(Number(cantidad)) || 1));
       const response = await api.put(`/cart/update/${productId}`, {
-        cantidad,
+        cantidad: qty,
         ...(variantId ? { variantId } : {}),
       });
       return handleApiResponse<Cart>(response);

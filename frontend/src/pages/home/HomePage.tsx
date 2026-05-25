@@ -10,6 +10,7 @@ import { HomeCategoriesSection } from '../../components/home/HomeCategoriesSecti
 import { HomeProductRailSection } from '../../components/home/HomeProductRailSection';
 import { HomeCtaSection } from '../../components/home/HomeCtaSection';
 import { SeoHead } from '../../components/seo/SeoHead';
+import { getApiErrorMessage } from '../../lib/apiErrors';
 
 const HomePage: React.FC = () => {
   const navigate = useNavigate();
@@ -27,8 +28,8 @@ const HomePage: React.FC = () => {
             onClick: () => navigate('/carrito'),
           },
         });
-      } catch {
-        showError('Carrito', 'No se pudo agregar el producto. Intenta de nuevo.');
+      } catch (e) {
+        showError('Carrito', getApiErrorMessage(e, 'No se pudo agregar el producto. Intenta de nuevo.'));
       }
     },
     [addToCart, navigate, showError],

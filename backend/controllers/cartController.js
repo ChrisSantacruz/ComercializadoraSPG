@@ -1,22 +1,17 @@
 const Cart = require('../models/Cart');
 const Product = require('../models/Product');
-const { validationResult } = require('express-validator');
 const { successResponse, errorResponse } = require('../utils/helpers');
+const logger = require('../utils/logger');
+const { sendCommerceError } = require('../utils/apiContract');
+const {
+  normalizeId,
+  isProductApproved,
+  resolvePurchasableVariant,
+  getLineCommerce,
+  sanitizeCartLogPayload,
+} = require('../utils/productCommerce');
 
 const DELIVERY_TYPES = ['domicilio', 'recoger_establecimiento'];
-
-const normalizeId = (value) => (value ? String(value) : '');
-
-const getPurchasableVariant = (producto, variantId) => {
-  if (!variantId) return null;
-  const variant = producto.variants?.id ? producto.variants.id(variantId) : producto.variants?.find((v) => String(v._id) === String(variantId));
-  if (!variant || variant.activo === false) {
-    const error = new Error('Variante no disponible');
-    error.statusCode = 400;
-    throw error;
-  }
-  return variant;
-};
 
 const populateCartProducts = async (carrito) => {
   await carrito.populate({
@@ -84,7 +79,7 @@ const obtenerCarrito = async (req, res) => {
     successResponse(res, 'Carrito obtenido exitosamente', carrito);
 
   } catch (error) {
-    console.error('Error obteniendo carrito:', error);
+    logger.error('cart_get_failed', { requestId: req.requestId, message: error.message });
     errorResponse(res, 'Error interno del servidor', 500);
   }
 };
@@ -94,31 +89,41 @@ const obtenerCarrito = async (req, res) => {
 // @access  Private
 const agregarAlCarrito = async (req, res) => {
   try {
-    // Las validaciones ya se manejan en el middleware
     const { productoId, cantidad, variantId } = req.body;
+    const cantidadNum = parseInt(cantidad, 10);
 
-    // Verificar que el producto existe y está disponible
+    logger.info('cart_add', {
+      requestId: req.requestId,
+      userId: req.usuario?.id,
+      payload: sanitizeCartLogPayload(req.body),
+    });
+
     const producto = await Product.findById(productoId);
     if (!producto) {
       return errorResponse(res, 'Producto no encontrado', 404);
     }
 
-    if (producto.estado !== 'aprobado') {
-      return errorResponse(res, 'Producto no disponible para compra', 400);
+    if (!isProductApproved(producto.estado)) {
+      return res.status(400).json({
+        exito: false,
+        mensaje: 'Este producto no está disponible para compra',
+        codigo: 'PRODUCT_NOT_AVAILABLE',
+        accion: 'Elige otro producto del catálogo',
+        requestId: req.requestId,
+      });
     }
 
-    const selectedVariant = getPurchasableVariant(producto, variantId);
-    const availableStock = selectedVariant ? selectedVariant.stock : producto.stock;
-    const unitPrice = selectedVariant
-      ? (selectedVariant.precioOferta || selectedVariant.precio)
-      : (producto.precioOferta || producto.precio);
-    const image = selectedVariant?.imagenes?.[0]?.url
-      || producto.imagenPrincipal
-      || (producto.imagenes && producto.imagenes.length > 0 ? producto.imagenes[0].url : '')
-      || '';
+    const selectedVariant = resolvePurchasableVariant(producto, variantId);
+    const { availableStock, unitPrice, image } = getLineCommerce(producto, selectedVariant);
 
-    if (availableStock < cantidad) {
-      return errorResponse(res, `Stock insuficiente. Disponible: ${availableStock}`, 400);
+    if (availableStock < cantidadNum) {
+      return res.status(400).json({
+        exito: false,
+        mensaje: `Stock insuficiente. Disponible: ${availableStock}`,
+        codigo: 'INSUFFICIENT_STOCK',
+        accion: 'Reduce la cantidad o elige otra variante',
+        requestId: req.requestId,
+      });
     }
 
     // Obtener o crear carrito
@@ -136,9 +141,15 @@ const agregarAlCarrito = async (req, res) => {
     );
 
     if (productoExistente) {
-      const nuevaCantidad = productoExistente.cantidad + cantidad;
+      const nuevaCantidad = productoExistente.cantidad + cantidadNum;
       if (nuevaCantidad > availableStock) {
-        return errorResponse(res, `Stock insuficiente. Disponible: ${availableStock}`, 400);
+        return res.status(400).json({
+          exito: false,
+          mensaje: `Stock insuficiente. Disponible: ${availableStock}`,
+          codigo: 'INSUFFICIENT_STOCK',
+          accion: 'Reduce la cantidad en el carrito',
+          requestId: req.requestId,
+        });
       }
       productoExistente.cantidad = nuevaCantidad;
     } else {
@@ -152,15 +163,15 @@ const agregarAlCarrito = async (req, res) => {
               imagen: image
             }
           : undefined,
-        cantidad,
+        cantidad: cantidadNum,
         precio: selectedVariant?.precio || producto.precio,
         precioOferta: selectedVariant?.precioOferta || producto.precioOferta,
-        subtotal: cantidad * unitPrice,
+        subtotal: cantidadNum * unitPrice,
         nombre: producto.nombre,
         imagen: image,
         comerciante: producto.comerciante,
         stockDisponible: availableStock,
-        disponible: availableStock >= cantidad
+        disponible: availableStock >= cantidadNum
       });
     }
 
@@ -181,10 +192,12 @@ const agregarAlCarrito = async (req, res) => {
     successResponse(res, 'Producto agregado al carrito exitosamente', carrito);
 
   } catch (error) {
-    if (error.statusCode) {
-      return errorResponse(res, error.message, error.statusCode);
-    }
-    console.error('Error agregando producto al carrito:', error);
+    if (sendCommerceError(res, error)) return;
+    logger.error('cart_add_failed', {
+      requestId: req.requestId,
+      message: error.message,
+      payload: sanitizeCartLogPayload(req.body),
+    });
     errorResponse(res, 'Error interno del servidor', 500);
   }
 };
@@ -214,11 +227,28 @@ const actualizarCantidad = async (req, res) => {
       return errorResponse(res, 'Producto no encontrado', 404);
     }
 
-    const selectedVariant = getPurchasableVariant(producto, variantId);
-    const availableStock = selectedVariant ? selectedVariant.stock : producto.stock;
+    if (!isProductApproved(producto.estado)) {
+      return res.status(400).json({
+        exito: false,
+        mensaje: 'Este producto ya no está disponible',
+        codigo: 'PRODUCT_NOT_AVAILABLE',
+        accion: 'Quita el producto del carrito',
+        requestId: req.requestId,
+      });
+    }
 
-    if (availableStock < cantidad) {
-      return errorResponse(res, `Stock insuficiente. Disponible: ${availableStock}`, 400);
+    const selectedVariant = resolvePurchasableVariant(producto, variantId);
+    const { availableStock } = getLineCommerce(producto, selectedVariant);
+    const cantidadNum = parseInt(cantidad, 10);
+
+    if (availableStock < cantidadNum) {
+      return res.status(400).json({
+        exito: false,
+        mensaje: `Stock insuficiente. Disponible: ${availableStock}`,
+        codigo: 'INSUFFICIENT_STOCK',
+        accion: 'Reduce la cantidad',
+        requestId: req.requestId,
+      });
     }
 
     const carrito = await Cart.findOne({ usuario: req.usuario.id });
@@ -234,7 +264,7 @@ const actualizarCantidad = async (req, res) => {
       return errorResponse(res, 'Producto no encontrado en el carrito', 404);
     }
 
-    productoEnCarrito.cantidad = cantidad;
+    productoEnCarrito.cantidad = cantidadNum;
     
     // Recalcular totales (ahora también actualiza subtotales de items)
     carrito.calcularTotales();
@@ -252,10 +282,8 @@ const actualizarCantidad = async (req, res) => {
     successResponse(res, 'Cantidad actualizada exitosamente', carrito);
 
   } catch (error) {
-    if (error.statusCode) {
-      return errorResponse(res, error.message, error.statusCode);
-    }
-    console.error('Error actualizando cantidad:', error);
+    if (sendCommerceError(res, error)) return;
+    logger.error('cart_update_failed', { requestId: req.requestId, message: error.message });
     errorResponse(res, 'Error interno del servidor', 500);
   }
 };

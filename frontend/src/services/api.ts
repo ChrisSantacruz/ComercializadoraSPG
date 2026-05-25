@@ -3,7 +3,7 @@ import { ApiResponse } from '../types';
 import { API_BASE } from '../config/env';
 import { getAccessTokenFromStorage, getRefreshTokenFromStorage } from '../auth/tokenBridge';
 import { emitAuthSessionLost } from '../auth/authEvents';
-import { AuthHttpError, parseApiError } from './authErrors';
+import { ApiHttpError, parseApiError, type ApiErrorCode } from './authErrors';
 
 const api = axios.create({
   baseURL: API_BASE,
@@ -69,7 +69,7 @@ api.interceptors.request.use(
 
 api.interceptors.response.use(
   (response: AxiosResponse<ApiResponse>) => response,
-  async (error: AxiosError<ApiResponse & { codigo?: string }>) => {
+  async (error: AxiosError<ApiResponse & { codigo?: string; accion?: string }>) => {
     const original = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
     const status = error.response?.status;
     const codigo = error.response?.data?.codigo;
@@ -145,12 +145,16 @@ export const handleApiResponse = <T>(response: AxiosResponse<ApiResponse<T>>): T
     if (data.exito) {
       return data.datos as T;
     }
-    throw new AuthHttpError(data.mensaje || 'Error en la API', response.status, 'UNKNOWN');
+    const codigo = (data as { codigo?: string }).codigo;
+    const accion = (data as { accion?: string }).accion;
+    throw new ApiHttpError(data.mensaje || 'Error en la API', response.status, (codigo as ApiErrorCode) || 'UNKNOWN', {
+      suggestedAction: accion,
+    });
   }
 
   return data as T;
 };
 
-export { AuthHttpError } from './authErrors';
+export { ApiHttpError, AuthHttpError, getApiErrorMessage, parseApiError } from './authErrors';
 
 export default api;

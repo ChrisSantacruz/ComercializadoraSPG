@@ -222,10 +222,10 @@ export const ProductVariantBuilder: React.FC<ProductVariantBuilderProps> = ({
               key={`${signatureFor(variant.attributes)}-${index}`}
               className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm"
             >
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div className="flex flex-col gap-4">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
-                    <p className="text-sm font-semibold text-gray-950">{attributesLabel(variant.attributes)}</p>
+                    <p className="min-w-0 text-sm font-semibold text-gray-950">{attributesLabel(variant.attributes)}</p>
                     {variant.isDefault ? (
                       <span className="rounded-full bg-primary-50 px-2 py-0.5 text-xs font-semibold text-primary-700">
                         Variante principal
@@ -242,13 +242,14 @@ export const ProductVariantBuilder: React.FC<ProductVariantBuilderProps> = ({
                   <p className="mt-1 text-xs text-gray-500">Edita el precio, stock e imagen de esta combinación.</p>
                 </div>
 
-                <div className="flex flex-wrap gap-2">
+                <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
                   <Button
                     type="button"
                     size="sm"
                     variant={variant.isDefault ? 'primary' : 'outline'}
                     onClick={() => setDefaultVariant(index)}
                     disabled={disabled}
+                    className="w-full sm:w-auto"
                   >
                     <CheckCircleIcon className="mr-1.5 h-4 w-4" aria-hidden />
                     Principal
@@ -259,6 +260,7 @@ export const ProductVariantBuilder: React.FC<ProductVariantBuilderProps> = ({
                     variant={variant.activo ? 'outline' : 'secondary'}
                     onClick={() => updateVariant(index, { activo: !variant.activo })}
                     disabled={disabled}
+                    className="w-full sm:w-auto"
                   >
                     {variant.activo ? 'Desactivar' : 'Activar'}
                   </Button>
@@ -269,13 +271,14 @@ export const ProductVariantBuilder: React.FC<ProductVariantBuilderProps> = ({
                     onClick={() => removeVariant(index)}
                     disabled={disabled}
                     aria-label="Eliminar variante"
+                    className="col-span-2 w-full sm:col-span-1 sm:w-auto"
                   >
                     <TrashIcon className="h-4 w-4" aria-hidden />
                   </Button>
                 </div>
               </div>
 
-              <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(120px,1fr)_minmax(140px,1fr)_minmax(140px,1fr)_minmax(120px,0.8fr)_minmax(220px,1.4fr)]">
+              <div className="mt-4 grid min-w-0 gap-3 sm:grid-cols-2">
                 <FormField id={`variant-sku-${index}`} label="SKU">
                   <Input
                     value={variant.sku}

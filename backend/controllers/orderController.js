@@ -2,6 +2,12 @@ const Order = require('../models/Order');
 const Cart = require('../models/Cart');
 const Product = require('../models/Product');
 const User = require('../models/User');
+const logger = require('../utils/logger');
+const {
+  isProductApproved,
+  resolvePurchasableVariant,
+  getLineCommerce,
+} = require('../utils/productCommerce');
 const { validationResult } = require('express-validator');
 const { successResponse, errorResponse, paginateData, validarObjectId } = require('../utils/helpers');
 const { enviarNotificacion } = require('../services/notificationService');
@@ -102,43 +108,86 @@ const crearPedido = async (req, res) => {
     let subtotal = 0;
     const productosValidos = [];
 
-    // Validar cada producto y calcular totales
+    logger.info('order_create_start', {
+      requestId: req.requestId,
+      userId: clienteId,
+      lineCount: productos.length,
+      tipoEntrega: tipoEntregaNormalizado,
+    });
+
+    // Validar cada producto y calcular totales (sin crear orden parcial)
     for (const item of productos) {
-      const producto = await Product.findById(item.producto);
+      const productoId = item.producto || item.productoId;
+      const cantidadLinea = parseInt(item.cantidad, 10);
+
+      if (!productoId) {
+        return res.status(400).json({
+          exito: false,
+          mensaje: 'Falta el identificador de un producto en el pedido',
+          codigo: 'INVALID_LINE_ITEM',
+          accion: 'Vuelve al carrito y actualiza la página',
+          requestId: req.requestId,
+        });
+      }
+
+      if (!Number.isFinite(cantidadLinea) || cantidadLinea < 1) {
+        return res.status(400).json({
+          exito: false,
+          mensaje: 'Cantidad inválida en el pedido',
+          codigo: 'INVALID_QUANTITY',
+          accion: 'Revisa las cantidades en tu carrito',
+          requestId: req.requestId,
+        });
+      }
+
+      const producto = await Product.findById(productoId);
       if (!producto) {
         return res.status(400).json({
           exito: false,
-          mensaje: `Producto ${item.producto} no encontrado`
+          mensaje: `El producto "${item.nombre || productoId}" ya no existe`,
+          codigo: 'PRODUCT_NOT_FOUND',
+          accion: 'Quita el producto del carrito',
+          requestId: req.requestId,
         });
       }
 
-      const variant = item.variantId && producto.variants?.id
-        ? producto.variants.id(item.variantId)
-        : null;
-      if (item.variantId && (!variant || variant.activo === false)) {
+      if (!isProductApproved(producto.estado)) {
         return res.status(400).json({
           exito: false,
-          mensaje: `Variante no disponible para ${producto.nombre}`
+          mensaje: `${producto.nombre} no está disponible para compra`,
+          codigo: 'PRODUCT_NOT_AVAILABLE',
+          accion: 'Quita el producto del carrito',
+          requestId: req.requestId,
         });
       }
 
-      const stockDisponible = variant ? variant.stock : producto.stock;
-      if (stockDisponible < item.cantidad) {
+      let variant;
+      try {
+        variant = resolvePurchasableVariant(producto, item.variantId);
+      } catch (variantErr) {
+        return res.status(variantErr.statusCode || 400).json({
+          exito: false,
+          mensaje: `${producto.nombre}: ${variantErr.message}`,
+          codigo: variantErr.codigo || 'VARIANT_UNAVAILABLE',
+          accion: 'Vuelve al producto y elige una variante válida',
+          requestId: req.requestId,
+        });
+      }
+
+      const { availableStock, unitPrice, image: itemImage } = getLineCommerce(producto, variant);
+
+      if (availableStock < cantidadLinea) {
         return res.status(400).json({
           exito: false,
-          mensaje: `Stock insuficiente para ${producto.nombre}`
+          mensaje: `Stock insuficiente para ${producto.nombre}. Disponible: ${availableStock}`,
+          codigo: 'INSUFFICIENT_STOCK',
+          accion: 'Reduce la cantidad o elige otra variante',
+          requestId: req.requestId,
         });
       }
 
-      const precioFinal = variant
-        ? (variant.precioOferta || variant.precio)
-        : (producto.precioOferta || producto.precio);
-      const subtotalItem = precioFinal * item.cantidad;
+      const subtotalItem = unitPrice * cantidadLinea;
       subtotal += subtotalItem;
-      const itemImage = variant?.imagenes?.[0]?.url
-        || producto.imagenPrincipal
-        || (producto.imagenes && producto.imagenes.length > 0 ? producto.imagenes[0].url : '')
-        || '';
 
       productosValidos.push({
         producto: producto._id,
@@ -152,13 +201,11 @@ const crearPedido = async (req, res) => {
           : undefined,
         comerciante: producto.comerciante,
         nombre: producto.nombre,
-        precio: precioFinal,
-        cantidad: item.cantidad,
+        precio: unitPrice,
+        cantidad: cantidadLinea,
         subtotal: subtotalItem,
         imagen: itemImage
       });
-
-      // NO descontar stock aquí - se descontará cuando se confirme el pago
     }
 
     // Impuestos deshabilitados temporalmente
@@ -318,11 +365,18 @@ const crearPedido = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error creando pedido:', error);
+    logger.error('order_create_failed', {
+      requestId: req.requestId,
+      message: error.message,
+      name: error.name,
+    });
     res.status(500).json({
       exito: false,
       mensaje: 'Error interno del servidor',
-      errores: [error.message]
+      codigo: 'ORDER_CREATE_FAILED',
+      accion: 'Intenta de nuevo en unos segundos',
+      requestId: req.requestId,
+      ...(process.env.NODE_ENV === 'development' && { errores: [error.message] }),
     });
   }
 };

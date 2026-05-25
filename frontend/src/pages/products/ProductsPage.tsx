@@ -14,6 +14,7 @@ import { ProductFiltersPanel } from '../../components/products/ProductFiltersPan
 import { useProductsCatalog } from '../../hooks/useProductsCatalog';
 import { FunnelIcon } from '@heroicons/react/24/outline';
 import { SeoHead } from '../../components/seo/SeoHead';
+import { getApiErrorMessage } from '../../lib/apiErrors';
 
 const ProductsPage: React.FC = () => {
   const navigate = useNavigate();
@@ -63,7 +64,7 @@ const ProductsPage: React.FC = () => {
           },
         });
       } catch (e) {
-        showError('Carrito', e instanceof Error ? e.message : 'No se pudo agregar al carrito.');
+        showError('Carrito', getApiErrorMessage(e, 'No se pudo agregar al carrito.'));
       }
     },
     [addToCart, navigate, showError],

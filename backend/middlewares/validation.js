@@ -5,14 +5,19 @@ const manejarErroresValidacion = (req, res, next) => {
   const errores = validationResult(req);
   
   if (!errores.isEmpty()) {
+    const arr = errores.array();
+    const first = arr[0];
     return res.status(400).json({
       exito: false,
-      mensaje: 'Errores de validación',
-      errores: errores.array().map(error => ({
+      mensaje: first?.msg || 'Datos inválidos',
+      codigo: 'VALIDATION_ERROR',
+      accion: 'Revisa los datos e inténtalo de nuevo',
+      errores: arr.map((error) => ({
         campo: error.path,
         mensaje: error.msg,
-        valor: error.value
-      }))
+        valor: error.value,
+      })),
+      requestId: req.requestId,
     });
   }
   
@@ -267,6 +272,11 @@ const validarAgregarCarrito = [
   body('cantidad')
     .isInt({ min: 1, max: 99 })
     .withMessage('La cantidad debe ser entre 1 y 99'),
+
+  body('variantId')
+    .optional({ nullable: true })
+    .isMongoId()
+    .withMessage('ID de variante inválido'),
     
   manejarErroresValidacion
 ];
@@ -275,7 +285,12 @@ const validarActualizarCantidad = [
   body('cantidad')
     .isInt({ min: 1, max: 99 })
     .withMessage('La cantidad debe ser entre 1 y 99'),
-    
+
+  body('variantId')
+    .optional({ nullable: true })
+    .isMongoId()
+    .withMessage('ID de variante inválido'),
+
   manejarErroresValidacion
 ];
 

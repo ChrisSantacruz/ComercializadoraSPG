@@ -3,6 +3,7 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import { Cart, DeliveryType } from '../types';
 import { cartService } from '../services/cartService';
 import { notifyCartError, notifyCartSuccess, type NotificationAction } from '../lib/appNotifications';
+import { getApiErrorMessage } from '../lib/apiErrors';
 import { safeInt, safeMoney } from '../lib/safeNumeric';
 import { appQueryClient } from '../lib/query/queryClient';
 import { queryKeys } from '../lib/query/queryKeys';
@@ -60,8 +61,7 @@ export const useCartStore = create<CartState>()(
           syncCartQuery(cart);
           set({ cart, isLoading: false });
         } catch (error: unknown) {
-          const message =
-            error instanceof Error ? error.message : 'Error al obtener carrito';
+          const message = getApiErrorMessage(error, 'Error al obtener carrito');
           set({
             error: message,
             isLoading: false,
@@ -84,8 +84,7 @@ export const useCartStore = create<CartState>()(
             );
           }
         } catch (error: unknown) {
-          const message =
-            error instanceof Error ? error.message : 'Error al agregar producto';
+          const message = getApiErrorMessage(error, 'Error al agregar producto');
           set({
             error: message,
             isLoading: false,
@@ -102,8 +101,7 @@ export const useCartStore = create<CartState>()(
           syncCartQuery(cart);
           set({ cart, isLoading: false });
         } catch (error: unknown) {
-          const message =
-            error instanceof Error ? error.message : 'Error al actualizar cantidad';
+          const message = getApiErrorMessage(error, 'Error al actualizar cantidad');
           set({
             error: message,
             isLoading: false,
@@ -121,8 +119,7 @@ export const useCartStore = create<CartState>()(
           set({ cart, isLoading: false });
           notifyCartSuccess('Carrito', 'Producto eliminado del carrito');
         } catch (error: unknown) {
-          const message =
-            error instanceof Error ? error.message : 'Error al eliminar producto';
+          const message = getApiErrorMessage(error, 'Error al eliminar producto');
           set({
             error: message,
             isLoading: false,
@@ -140,8 +137,7 @@ export const useCartStore = create<CartState>()(
           set({ cart: null, isLoading: false });
           notifyCartSuccess('Carrito', 'Carrito limpiado');
         } catch (error: unknown) {
-          const message =
-            error instanceof Error ? error.message : 'Error al limpiar carrito';
+          const message = getApiErrorMessage(error, 'Error al limpiar carrito');
           set({
             error: message,
             isLoading: false,
@@ -158,8 +154,7 @@ export const useCartStore = create<CartState>()(
           syncCartQuery(cart);
           set({ cart, isLoading: false });
         } catch (error: unknown) {
-          const message =
-            error instanceof Error ? error.message : 'Error al actualizar tipo de entrega';
+          const message = getApiErrorMessage(error, 'Error al actualizar tipo de entrega');
           set({
             error: message,
             isLoading: false,
@@ -177,8 +172,7 @@ export const useCartStore = create<CartState>()(
           set({ cart, isLoading: false });
           notifyCartSuccess('Carrito', 'Cupón aplicado correctamente');
         } catch (error: unknown) {
-          const message =
-            error instanceof Error ? error.message : 'Error al aplicar cupón';
+          const message = getApiErrorMessage(error, 'Error al aplicar cupón');
           set({
             error: message,
             isLoading: false,
@@ -196,8 +190,7 @@ export const useCartStore = create<CartState>()(
           set({ cart, isLoading: false });
           notifyCartSuccess('Carrito', 'Cupón removido');
         } catch (error: unknown) {
-          const message =
-            error instanceof Error ? error.message : 'Error al remover cupón';
+          const message = getApiErrorMessage(error, 'Error al remover cupón');
           set({
             error: message,
             isLoading: false,

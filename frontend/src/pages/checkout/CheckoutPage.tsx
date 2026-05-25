@@ -16,6 +16,9 @@ import { useAuthStore } from '../../stores/authStore';
 import { BRAND_NAME } from '../../components/nav/navData';
 import { getDepartamentos, getCiudadesPorDepartamento } from '../../utils/colombiaData';
 import { queryKeys } from '../../lib/query/queryKeys';
+import { getApiErrorMessage } from '../../lib/apiErrors';
+import { resolveCartProductId } from '../../lib/cartLineUtils';
+import { useCartStore } from '../../stores/cartStore';
 import {
   BuildingStorefrontIcon,
   CheckIcon,
@@ -366,6 +369,8 @@ const CheckoutPageOptimized: React.FC = () => {
         return;
       }
       setCart(cartData);
+      useCartStore.getState().syncCart(cartData);
+      queryClient.setQueryData(queryKeys.cart.current(), cartData);
       setDeliveryType(cartData.tipoEntrega || 'domicilio');
       setValue('deliveryType', cartData.tipoEntrega || 'domicilio', { shouldValidate: false });
 
@@ -380,8 +385,8 @@ const CheckoutPageOptimized: React.FC = () => {
         setValue('selectedAddress', defaultAddress._id, { shouldValidate: false });
       }
 
-    } catch {
-      setError('Error al cargar los datos iniciales');
+    } catch (loadErr: unknown) {
+      setError(getApiErrorMessage(loadErr, 'Error al cargar los datos iniciales'));
     } finally {
       setLoading(false);
     }
@@ -414,8 +419,8 @@ const CheckoutPageOptimized: React.FC = () => {
         clearErrors(['selectedAddress', 'newAddress', 'otraCiudad']);
       }
       setError('');
-    } catch (deliveryError: any) {
-      setError(deliveryError.message || 'No se pudo actualizar el tipo de entrega');
+    } catch (deliveryError: unknown) {
+      setError(getApiErrorMessage(deliveryError, 'No se pudo actualizar el tipo de entrega'));
     } finally {
       setUpdatingDeliveryType(false);
     }
@@ -452,16 +457,20 @@ const CheckoutPageOptimized: React.FC = () => {
           : selectedAddress;
 
       // Preparar datos de la orden
+      const orderLines = cart!.productos.map((item: CartItem) => {
+        const productoId = resolveCartProductId(item);
+        if (!productoId) {
+          throw new Error('Hay un producto en el carrito sin identificar. Actualiza el carrito e inténtalo de nuevo.');
+        }
+        return {
+          producto: productoId,
+          ...(item.variantId ? { variantId: String(item.variantId) } : {}),
+          cantidad: Math.max(1, Math.floor(Number(item.cantidad)) || 1),
+        };
+      });
+
       const orderData: OrderForm = {
-        productos: cart!.productos.map((item: CartItem) => ({
-          producto: item.producto._id,
-          ...(item.variantId ? { variantId: item.variantId } : {}),
-          cantidad: item.cantidad,
-          precio: item.producto.precio,
-          comerciante: typeof item.producto.comerciante === 'string' 
-            ? item.producto.comerciante 
-            : item.producto.comerciante._id
-        })),
+        productos: orderLines,
         direccionEntrega: finalAddress,
         tipoEntrega: deliveryType,
         deliveryMethod: isStorePickup ? 'pickup' : 'delivery',
@@ -486,8 +495,7 @@ const CheckoutPageOptimized: React.FC = () => {
       return response._id;
 
     } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : 'Error al procesar la orden';
-      setError(msg || 'Error al procesar la orden');
+      setError(getApiErrorMessage(error, 'Error al procesar la orden'));
       return null;
     } finally {
       setProcessingPayment(false);
