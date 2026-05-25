@@ -1,5 +1,4 @@
 const Order = require('../models/Order');
-const Cart = require('../models/Cart');
 const Product = require('../models/Product');
 const User = require('../models/User');
 const logger = require('../utils/logger');
@@ -15,6 +14,7 @@ const mongoose = require('mongoose');
 
 const SHIPPING_COST_COP = 18000;
 const DELIVERY_TYPES = ['domicilio', 'recoger_establecimiento'];
+const VISIBLE_ORDER_STATES = ['confirmado', 'procesando', 'enviado', 'entregado', 'cancelado', 'paid'];
 const DEFAULT_PICKUP_LOCATION = {
   name: 'Comercializadora SPG',
   address: 'Pasto, Nariño',
@@ -255,12 +255,11 @@ const crearPedido = async (req, res) => {
       tipoEntrega: tipoEntregaNormalizado,
       deliveryMethod: deliveryMethodNormalizado,
       pickupLocation: pickupLocationNormalizada,
-      estado: 'pendiente',
+      estado: 'payment_pending',
       direccionEntrega: direccionNormalizada,
       metodoPago: {
         tipo: metodoPago.tipo,
-        estado: 'pendiente',
-        transaccionId: `TXN_${Date.now()}`
+        estado: 'procesando'
       },
       envio: {
         tipoEnvio: esRecogidaEstablecimiento ? 'recoger_tienda' : 'normal'
@@ -287,76 +286,7 @@ const crearPedido = async (req, res) => {
       throw saveErr;
     }
 
-    // Notificar a los comerciantes sobre el nuevo pedido y actualizar estadísticas
-    try {
-      const comerciantesNotificados = new Set();
-      
-      for (const item of productosValidos) {
-        if (!comerciantesNotificados.has(item.comerciante.toString())) {
-          // Buscar el comerciante
-          const comerciante = await User.findById(item.comerciante);
-          if (comerciante) {
-            // Actualizar estadísticas del comerciante
-            const productosComerciante = productosValidos.filter(p => p.comerciante.toString() === item.comerciante.toString());
-            const totalVenta = productosComerciante.reduce((sum, p) => sum + p.subtotal, 0);
-            
-            await User.findByIdAndUpdate(comerciante._id, {
-              $inc: {
-                'estadisticas.productosVendidos': productosComerciante.length,
-                'estadisticas.ingresosTotales': totalVenta,
-                'estadisticas.pedidosRealizados': 1
-              }
-            });
-
-            // Crear notificación para el comerciante
-            const Notification = require('../models/Notification');
-            await Notification.create({
-              usuario: comerciante._id,
-              tipo: 'nueva_venta',
-              titulo: '¡Nueva venta realizada!',
-              mensaje: `Has vendido ${productosComerciante.length} producto(s) por un total de $${totalVenta.toLocaleString()} COP`,
-              datos: {
-                elementoId: nuevoPedido._id,
-                tipoElemento: 'pedido',
-                url: `/merchant/orders/${nuevoPedido._id}`,
-                accion: 'ver_pedido',
-                datosExtra: {
-                  numeroOrden: nuevoPedido.numeroOrden,
-                  cantidadProductos: productosComerciante.length,
-                  total: totalVenta
-                }
-              },
-              prioridad: 'alta',
-              canales: {
-                enApp: true,
-                email: true
-              }
-            });
-            
-            comerciantesNotificados.add(item.comerciante.toString());
-          }
-        }
-      }
-    } catch (notifError) {
-      console.error('Error enviando notificaciones a comerciantes:', notifError);
-      // No fallar el pedido por error en notificaciones
-    }
-
-    // Limpiar carrito del usuario
-    await Cart.findOneAndUpdate(
-      { usuario: clienteId },
-      {
-        $set: {
-          productos: [],
-          subtotal: 0,
-          impuestos: 0,
-          costoEnvio: 0,
-          descuentos: 0,
-          total: 0,
-          tipoEntrega: 'domicilio'
-        }
-      }
-    );
+    // Stock, carrito, estadísticas, notificaciones y emails se aplican solo al confirmar APPROVED en Wompi.
 
     res.status(201).json({
       exito: true,
@@ -390,15 +320,12 @@ const obtenerMisPedidos = async (req, res) => {
     const limit = parseInt(req.query.limit) || 10;
     const estado = req.query.estado;
 
-    console.log(`🔍 Buscando pedidos para cliente: ${req.usuario.id}`);
-    console.log(`📋 Parámetros: página=${page}, límite=${limit}, estado=${estado}`);
-
-    let filtros = { cliente: req.usuario.id };
+    let filtros = { cliente: req.usuario.id, estado: { $in: VISIBLE_ORDER_STATES } };
     if (estado && estado !== '' && estado !== 'todos') {
-      filtros.estado = estado;
+      filtros.estado = VISIBLE_ORDER_STATES.includes(estado) ? estado : '__hidden_payment_state__';
     }
 
-    console.log('🔍 Filtros aplicados:', filtros);
+    logger.info('orders_my_filters', { requestId: req.requestId, userId: req.usuario.id, page, limit, estado });
 
     const pedidos = await Order.find(filtros)
       .populate('cliente', 'nombre email telefono')
@@ -410,17 +337,7 @@ const obtenerMisPedidos = async (req, res) => {
 
     const total = await Order.countDocuments(filtros);
 
-    console.log(`📦 Pedidos encontrados para cliente ${req.usuario.id}: ${pedidos.length} de ${total} total`);
-
-    // Log detallado de cada pedido encontrado
-    pedidos.forEach((pedido, index) => {
-      console.log(`   ${index + 1}. ${pedido.numeroOrden} - Estado: ${pedido.estado} - Cliente: ${pedido.cliente?.nombre || 'N/A'}`);
-    });
-
-    // Si no hay pedidos, devolver respuesta vacía pero exitosa
-    if (pedidos.length === 0) {
-      console.log('ℹ️ No se encontraron pedidos para este cliente');
-    }
+    logger.info('orders_my_result', { requestId: req.requestId, userId: req.usuario.id, count: pedidos.length, total });
 
     res.json({
       exito: true,
@@ -435,7 +352,7 @@ const obtenerMisPedidos = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ Error obteniendo pedidos del cliente:', error);
+    logger.error('orders_my_failed', { requestId: req.requestId, userId: req.usuario.id, message: error.message });
     res.status(500).json({
       exito: false,
       mensaje: 'Error interno del servidor',
@@ -459,9 +376,9 @@ const obtenerOrdenesComerciante = async (req, res) => {
     // Convertir el ID del comerciante a ObjectId si es necesario
     const comercianteId = new mongoose.Types.ObjectId(req.usuario.id);
 
-    let filtros = {};
+    let filtros = { estado: { $in: VISIBLE_ORDER_STATES } };
     if (estado && estado !== 'todos') {
-      filtros.estado = estado;
+      filtros.estado = VISIBLE_ORDER_STATES.includes(estado) ? estado : '__hidden_payment_state__';
     }
 
     console.log('🔍 Filtros aplicados:', filtros);
@@ -696,6 +613,13 @@ const obtenerDetalleOrden = async (req, res) => {
       });
     }
 
+    if (rolUsuario !== 'administrador' && !VISIBLE_ORDER_STATES.includes(orden.estado)) {
+      return res.status(404).json({
+        exito: false,
+        mensaje: 'Orden no encontrada'
+      });
+    }
+
     res.json({
       exito: true,
       mensaje: 'Detalle de orden obtenido exitosamente',
@@ -755,6 +679,13 @@ const obtenerPedidoPorId = async (req, res) => {
       return res.status(403).json({
         exito: false,
         mensaje: 'No tienes permiso para ver este pedido'
+      });
+    }
+
+    if (req.usuario.rol !== 'administrador' && !VISIBLE_ORDER_STATES.includes(pedido.estado)) {
+      return res.status(404).json({
+        exito: false,
+        mensaje: 'Pedido no encontrado'
       });
     }
 

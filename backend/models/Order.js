@@ -167,10 +167,25 @@ const orderSchema = new mongoose.Schema({
     transactionId: String,
     paymentStatus: {
       type: String,
-      enum: ['pending', 'approved', 'declined', 'error']
+      enum: ['created', 'pending', 'approved', 'declined', 'voided', 'error', 'expired']
     },
     paidAt: Date,
-    failureReason: String
+    failureReason: String,
+    wompiStatus: {
+      type: String,
+      enum: ['CREATED', 'PENDING', 'APPROVED', 'DECLINED', 'VOIDED', 'ERROR', 'EXPIRED']
+    },
+    lastVerifiedAt: Date,
+    verificationSource: String,
+    syncLockAt: Date,
+    stockDiscountedAt: Date,
+    notificationsSentAt: Date,
+    buyerEmailSentAt: Date,
+    merchantEmailSentAt: Date,
+    emailAttempts: {
+      type: Number,
+      default: 0
+    }
   },
   
   // Información de envío

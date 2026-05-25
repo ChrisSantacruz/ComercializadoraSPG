@@ -588,9 +588,7 @@ const CheckoutPageOptimized: React.FC = () => {
       return paymentResult.data.paymentUrl as string;
     },
     onSuccess: async (paymentUrl) => {
-      await cartService.clearCart();
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: queryKeys.cart.all }),
         queryClient.invalidateQueries({ queryKey: queryKeys.orders.all })
       ]);
       sessionStorage.removeItem(CHECKOUT_DRAFT_KEY);

@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useReducer, useRef } from 'react';
 import axios from 'axios';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../stores/authStore';
+import { useCartStore } from '../stores/cartStore';
 import { confirmPaymentReturn } from '../services/checkoutPaymentService';
 import { AuthHttpError } from '../services/authErrors';
+import { queryKeys } from '../lib/query/queryKeys';
 import {
   initialCheckoutPaymentContext,
   reduceCheckoutPayment,
@@ -32,6 +35,7 @@ export function useCheckoutPaymentReturn() {
   );
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const abortRef = useRef<AbortController | null>(null);
   const pollTimerRef = useRef<number | null>(null);
@@ -52,7 +56,7 @@ export function useCheckoutPaymentReturn() {
   }, []);
 
   const runVerify = useCallback(
-    async (transactionId: string, orderId: string, options?: { isPoll?: boolean }) => {
+    async (transactionId: string | null, orderId: string, options?: { isPoll?: boolean }) => {
       verifyCloseRef.current = false;
       if (!options?.isPoll) {
         pollCount.current = 0;
@@ -71,12 +75,19 @@ export function useCheckoutPaymentReturn() {
         const orderState = result.order?.estado as string | undefined;
 
         if (st === 'APPROVED' || orderState === 'confirmado') {
+          await Promise.all([
+            queryClient.invalidateQueries({ queryKey: queryKeys.cart.all }),
+            queryClient.invalidateQueries({ queryKey: queryKeys.orders.all }),
+            queryClient.invalidateQueries({ queryKey: queryKeys.profile.all }),
+            queryClient.invalidateQueries({ queryKey: queryKeys.merchant.all })
+          ]);
+          useCartStore.getState().clearCart();
           dispatch({ type: 'SUCCESS', message: 'Pago confirmado' });
           sessionStorage.removeItem(RESUME_KEY);
           return;
         }
 
-        if (st === 'PENDING' || orderState === 'payment_pending' || orderState === 'pendiente') {
+        if (st === 'CREATED' || st === 'PENDING' || result.sync?.pending || orderState === 'payment_pending' || orderState === 'pendiente') {
           if (pollCount.current < POLL_MAX) {
             pollCount.current += 1;
             dispatch({
@@ -92,7 +103,7 @@ export function useCheckoutPaymentReturn() {
           }
           dispatch({
             type: 'RETRYABLE',
-            message: 'El pago sigue pendiente. Revisa más tarde en “Mis pedidos”.',
+            message: 'El pago sigue pendiente. Lo mostraremos en tus pedidos solo cuando Wompi confirme la aprobación.',
             technicalDetail: 'pending_max_poll'
           });
           return;
@@ -138,7 +149,7 @@ export function useCheckoutPaymentReturn() {
         dispatch({ type: 'FAILED', message: msg });
       }
     },
-    []
+    [queryClient]
   );
 
   const searchKey = searchParams.toString();
@@ -163,10 +174,10 @@ export function useCheckoutPaymentReturn() {
     const tx = transactionId || fromResume?.transactionId || null;
     const ord = orderId || fromResume?.orderId || null;
 
-    if (!tx || !ord) {
+    if (!ord) {
       dispatch({
         type: 'FAILED',
-        message: 'Faltan datos de la transacción. Abre el enlace desde el correo o revisa “Mis pedidos”.',
+        message: 'Falta la referencia del pedido. Abre el enlace desde Wompi o vuelve al checkout.',
         technicalDetail: 'missing_params'
       });
       return () => clearTimers();

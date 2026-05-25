@@ -137,10 +137,18 @@ const wompiController = {
                     method: 'wompi',
                     paymentLinkId: result.data?.data?.id,
                     paymentUrl: result.data?.data?.permalink,
-                    paymentStatus: 'pending'
+                    paymentStatus: 'created',
+                    wompiStatus: 'CREATED',
+                    verificationSource: 'payment_link_create'
                 };
                 order.estado = 'payment_pending';
                 await order.save();
+                logger.info('payment_created', {
+                    requestId: req.requestId,
+                    orderId: order._id,
+                    paymentLinkId: result.data?.data?.id,
+                    amount: order.total
+                });
 
                 res.json({
                     success: true,
@@ -201,11 +209,11 @@ const wompiController = {
             }
 
             // Verificar que la orden esté en estado pendiente
-            if (order.estado !== 'pendiente') {
+            if (!['pendiente', 'payment_pending'].includes(order.estado)) {
                 logger.warn('wompi_order_invalid_state', { requestId: req.requestId, orderId, state: order.estado });
                 return res.status(400).json({
                     success: false,
-                    message: 'La orden no está en estado pendiente'
+                    message: 'La orden no está en estado pendiente de pago'
                 });
             }
 
@@ -276,6 +284,9 @@ const wompiController = {
                     method: 'wompi',
                     paymentLinkId: result.data.data.id,
                     paymentUrl: result.data.data.permalink,
+                    paymentStatus: 'created',
+                    wompiStatus: 'CREATED',
+                    verificationSource: 'payment_link_create',
                     createdAt: new Date()
                 };
                 
@@ -360,6 +371,12 @@ const wompiController = {
             }
 
             const transactionId = wompiOrderSync.extractTransactionIdFromWebhookEvent(eventData);
+            logger.info('wompi_webhook_received', {
+                requestId: req.requestId,
+                event: eventData?.event,
+                hasTransactionId: Boolean(transactionId),
+                environment: eventData?.environment
+            });
             if (!transactionId) {
                 return res.status(200).json({ received: true, ignored: true });
             }
@@ -382,10 +399,19 @@ const wompiController = {
     async confirmPaymentReturn(req, res) {
         try {
             const { transactionId, orderId } = req.body || {};
-            if (!transactionId || !orderId) {
+            logger.info('wompi_confirm_return_received', {
+                requestId: req.requestId,
+                hasTransactionId: Boolean(transactionId),
+                hasOrderId: Boolean(orderId),
+                bodyKeys: Object.keys(req.body || {})
+            });
+
+            if (!orderId) {
                 return res.status(400).json({
                     exito: false,
-                    mensaje: 'transactionId y orderId son obligatorios'
+                    mensaje: 'orderId es obligatorio para verificar el retorno de Wompi',
+                    codigo: 'ORDER_ID_REQUIRED',
+                    requestId: req.requestId
                 });
             }
 
@@ -398,8 +424,45 @@ const wompiController = {
                 return res.status(403).json({ exito: false, mensaje: 'No autorizado' });
             }
 
-            const remote = await wompiService.getTransactionStatus(transactionId);
+            const storedTransactionId = order.paymentInfo?.transactionId;
+            const txId = transactionId || storedTransactionId;
+            if (!txId) {
+                logger.info('wompi_confirm_return_waiting_webhook', {
+                    requestId: req.requestId,
+                    orderId,
+                    paymentLinkId: order.paymentInfo?.paymentLinkId,
+                    state: order.estado
+                });
+                return res.json({
+                    exito: true,
+                    mensaje: 'Pago pendiente de confirmación por Wompi',
+                    datos: {
+                        order,
+                        transactionStatus: order.paymentInfo?.wompiStatus || 'PENDING',
+                        sync: { ok: true, pending: true, reason: 'waiting_for_wompi_transaction' }
+                    }
+                });
+            }
+
+            const remote = await wompiService.getTransactionStatus(txId);
             if (!remote.success) {
+                if (!storedTransactionId && transactionId) {
+                    logger.warn('wompi_confirm_return_unverified_query_transaction', {
+                        requestId: req.requestId,
+                        orderId,
+                        transactionId,
+                        reason: 'query_id_not_verified_by_wompi'
+                    });
+                    return res.json({
+                        exito: true,
+                        mensaje: 'Pago pendiente de confirmación por Wompi',
+                        datos: {
+                            order,
+                            transactionStatus: order.paymentInfo?.wompiStatus || 'PENDING',
+                            sync: { ok: true, pending: true, reason: 'unverified_return_transaction_id' }
+                        }
+                    });
+                }
                 return res.status(502).json({
                     exito: false,
                     mensaje: 'No se pudo verificar el pago con Wompi',
@@ -409,19 +472,34 @@ const wompiController = {
 
             const tx = remote.data?.data || remote.data;
             if (!tx || String(tx.reference) !== String(orderId)) {
+                logger.warn('wompi_confirm_return_reference_mismatch', {
+                    requestId: req.requestId,
+                    orderId,
+                    transactionId: txId,
+                    receivedReference: tx?.reference
+                });
                 return res.status(400).json({
                     exito: false,
                     mensaje: 'La transacción no corresponde a este pedido',
-                    codigo: 'REFERENCE_MISMATCH'
+                    codigo: 'REFERENCE_MISMATCH',
+                    requestId: req.requestId
                 });
             }
 
             const expected = wompiOrderSync.expectedAmountInCents(order);
             if (Number.isFinite(tx.amount_in_cents) && tx.amount_in_cents !== expected) {
+                logger.warn('wompi_confirm_return_amount_mismatch', {
+                    requestId: req.requestId,
+                    orderId,
+                    transactionId: txId,
+                    expected,
+                    received: tx.amount_in_cents
+                });
                 return res.status(400).json({
                     exito: false,
                     mensaje: 'El monto de la transacción no coincide con el pedido',
-                    codigo: 'AMOUNT_MISMATCH'
+                    codigo: 'AMOUNT_MISMATCH',
+                    requestId: req.requestId
                 });
             }
 
@@ -440,7 +518,7 @@ const wompiController = {
                 mensaje: 'Estado verificado',
                 datos: {
                     order: fresh,
-                    transactionStatus: tx.status,
+                    transactionStatus: wompiOrderSync.normalizeWompiStatus(tx.status) || tx.status,
                     sync: syncResult
                 }
             });

@@ -13,6 +13,7 @@ import {
   CpuChipIcon,
   ClockIcon,
   CubeIcon,
+  InboxIcon,
   TruckIcon,
   XCircleIcon,
 } from '@heroicons/react/24/outline';
@@ -342,13 +343,13 @@ const OrdersPage: React.FC = () => {
                 {(order as any).entrega?.confirmada && (
                   <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-md">
                     <div className="flex items-center">
-                      <span className="text-green-600 mr-2">✅</span>
+                      <CheckCircleIcon className="mr-2 h-5 w-5 text-green-600" aria-hidden />
                       <span className="text-sm font-medium text-green-800">
                         Entrega confirmada el {new Date((order as any).entrega.fechaConfirmacion).toLocaleDateString('es-CO')}
                       </span>
                       {(order as any).entrega?.calificacionEntrega && (
                         <span className="ml-2 text-sm text-green-600">
-                          {'⭐'.repeat((order as any).entrega.calificacionEntrega)}
+                          {`${(order as any).entrega.calificacionEntrega}/5`}
                         </span>
                       )}
                     </div>
@@ -377,7 +378,7 @@ const OrdersPage: React.FC = () => {
                           onClick={() => setShowDeliveryConfirmation(order)}
                           className="bg-green-600 text-white px-3 py-1 rounded text-sm font-medium hover:bg-green-700 transition-colors"
                         >
-                          ✅ Confirmar Entrega
+                          Confirmar entrega
                         </button>
                       )}
                       
@@ -396,7 +397,7 @@ const OrdersPage: React.FC = () => {
                                 onClick={() => openReviewForm(order, productId, productName)}
                                 className="bg-yellow-600 text-white px-3 py-1 rounded text-sm font-medium hover:bg-yellow-700 transition-colors"
                               >
-                                ⭐ Reseñar: {productName}
+                                Reseñar: {productName}
                               </button>
                             );
                           })}
@@ -417,7 +418,7 @@ const OrdersPage: React.FC = () => {
         ) : (
           <div className="bg-white rounded-lg shadow-md p-12 text-center">
             <div className="mx-auto w-24 h-24 bg-gray-100 rounded-full flex items-center justify-center mb-4">
-              <span className="text-4xl">📦</span>
+              <InboxIcon className="h-10 w-10 text-gray-400" aria-hidden />
             </div>
             <h3 className="text-lg font-medium text-gray-900 mb-2">No tienes pedidos aún</h3>
             <p className="text-gray-600 mb-6">
