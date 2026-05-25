@@ -1,7 +1,10 @@
 const logger = require('../utils/logger');
+const { applyCorsHeaders } = require('./corsConfig');
 
 // Middleware para manejo global de errores
 const errorHandler = (err, req, res, next) => {
+  applyCorsHeaders(req, res);
+
   let error = { ...err };
   error.message = err.message;
   const requestId = req.requestId;

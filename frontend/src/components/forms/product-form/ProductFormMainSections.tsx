@@ -175,7 +175,7 @@ export const ProductFormMainSections: React.FC<ProductFormMainSectionsProps> = (
           label="Categoría"
           required
           error={errors.categoria}
-          hint={categoryError || 'Se cargan desde el API; no se usan categorías inventadas.'}
+          hint={categoryError || undefined}
         >
           <CategoryCombobox
             name="categoria"

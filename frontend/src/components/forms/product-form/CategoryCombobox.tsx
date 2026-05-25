@@ -54,10 +54,7 @@ export const CategoryCombobox: React.FC<CategoryComboboxProps> = ({
     const trimmed = normalize(query.trim());
     if (!trimmed) return categories;
 
-    return categories.filter((category) =>
-      [category.nombre, category.slug, category.descripcion ?? '']
-        .some((field) => normalize(field).includes(trimmed)),
-    );
+    return categories.filter((category) => normalize(category.nombre).includes(trimmed));
   }, [categories, query]);
 
   if (loading && categories.length === 0) {
@@ -67,7 +64,6 @@ export const CategoryCombobox: React.FC<CategoryComboboxProps> = ({
           <Skeleton className="h-10 w-10 rounded-xl" />
           <div className="min-w-0 flex-1 space-y-2">
             <Skeleton className="h-4 w-40" />
-            <Skeleton className="h-3 w-64 max-w-full" />
           </div>
         </div>
       </div>
@@ -184,12 +180,7 @@ export const CategoryCombobox: React.FC<CategoryComboboxProps> = ({
                     >
                       <TagIcon className="h-4 w-4" aria-hidden="true" />
                     </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-semibold">{category.nombre}</p>
-                      <p className={cn('truncate text-xs', active ? 'text-primary-700' : 'text-gray-500')}>
-                        {category.slug || 'categoria-activa'}
-                      </p>
-                    </div>
+                    <p className="min-w-0 flex-1 truncate text-sm font-semibold">{category.nombre}</p>
                     {selected ? (
                       <CheckIcon className="h-5 w-5 shrink-0 text-primary-600" aria-hidden="true" />
                     ) : null}

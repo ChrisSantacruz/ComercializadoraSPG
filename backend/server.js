@@ -1,6 +1,5 @@
 const express = require('express');
 const mongoose = require('mongoose');
-const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
 const compression = require('compression');
@@ -33,6 +32,7 @@ const adminRoutes = require('./routes/adminRoutes');
 const errorHandler = require('./middlewares/errorHandler');
 const notFound = require('./middlewares/notFound');
 const requestContext = require('./middlewares/requestContext');
+const { corsMiddleware, applyCorsHeaders } = require('./middlewares/corsConfig');
 const logger = require('./utils/logger');
 const wompiService = require('./services/wompiService');
 const { ensureActiveCategories } = require('./services/categorySeedService');
@@ -78,6 +78,9 @@ app.set('trust proxy', 1);
 
 app.use(requestContext);
 
+// CORS primero: preflight y errores deben incluir Access-Control-Allow-Origin
+app.use(corsMiddleware);
+
 // Middlewares de seguridad
 app.use(
   helmet({
@@ -96,16 +99,24 @@ app.use(compression());
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: isProduction ? Math.max(60, Number(process.env.RATE_LIMIT_MAX || 400)) : 1000,
-  message: 'Demasiadas peticiones desde esta IP, intenta de nuevo en 15 minutos.',
   standardHeaders: true,
   legacyHeaders: false,
   skipSuccessfulRequests: true,
+  handler: (req, res) => {
+    applyCorsHeaders(req, res);
+    res.status(429).json({
+      exito: false,
+      mensaje: 'Demasiadas peticiones desde esta IP, intenta de nuevo en 15 minutos.',
+      error: 'RATE_LIMIT_EXCEEDED',
+    });
+  },
 });
 app.use('/api/', limiter);
 
 // Middleware para manejar errores de rate limiting
 app.use((err, req, res, next) => {
   if (err.status === 429) {
+    applyCorsHeaders(req, res);
     return res.status(429).json({
       exito: false,
       mensaje: 'Demasiadas peticiones. Intenta de nuevo en unos minutos.',
@@ -121,80 +132,6 @@ app.use('/api/wompi/webhook', express.raw({ type: 'application/json' }));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cookieParser());
-
-// CORS — production: whitelist only (DEC-AUTH-001 / staging hardening)
-const allowedOrigins = [
-  'http://localhost:3000',
-  'https://andinoexpress.com',
-  'https://www.andinoexpress.com',
-  process.env.FRONTEND_URL,
-  process.env.ADMIN_URL,
-]
-  .filter(Boolean)
-  .map((o) => String(o).replace(/\/$/, ''));
-
-const corsOptions = {
-  origin: function (origin, callback) {
-    if (!origin) {
-      if (isProduction && process.env.CORS_ALLOW_NO_ORIGIN !== 'true') {
-        logger.warn('cors_missing_origin', {});
-        return callback(new Error('Not allowed by CORS'));
-      }
-      return callback(null, true);
-    }
-    const normalized = String(origin).replace(/\/$/, '');
-    if (allowedOrigins.includes(normalized)) {
-      if (!isProduction) logger.debug('cors_allowed', { origin: normalized });
-      return callback(null, true);
-    }
-    logger.warn('cors_blocked', { origin: normalized });
-    return callback(new Error('Not allowed by CORS'));
-  },
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: [
-    'Content-Type',
-    'Authorization',
-    'Idempotency-Key',
-    'X-Request-Id',
-    'Accept',
-    'Origin',
-    'X-Requested-With',
-    'X-Signature',
-    'X-Timestamp',
-  ],
-  exposedHeaders: ['Content-Range', 'X-Content-Range', 'X-Request-Id'],
-  optionsSuccessStatus: 200,
-  preflightContinue: false,
-  maxAge: 86400,
-};
-
-function isAdminBootstrapRequest(req) {
-  return (
-    process.env.ENABLE_ADMIN_BOOTSTRAP === 'true' &&
-    req.path === '/api/admin/bootstrap-superadmin' &&
-    ['GET', 'POST', 'OPTIONS'].includes(req.method)
-  );
-}
-
-app.use((req, res, next) => {
-  if (isAdminBootstrapRequest(req)) {
-    res.setHeader('Vary', 'Origin');
-    return next();
-  }
-  return cors(corsOptions)(req, res, next);
-});
-
-// Manejador explícito de preflight OPTIONS
-app.options('*', (req, res, next) => {
-  if (isAdminBootstrapRequest(req)) {
-    return res.sendStatus(200);
-  }
-  return cors(corsOptions)(req, res, next);
-});
-
-// Archivos estáticos pasan por la misma política CORS; no se permite wildcard.
-app.use(['/api/uploads', '/uploads'], cors(corsOptions));
 
 // Middleware de logging específico para rutas sensibles — sin credenciales en logs
 function redactBody(obj) {

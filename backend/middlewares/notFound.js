@@ -1,5 +1,8 @@
+const { applyCorsHeaders } = require('./corsConfig');
+
 // Middleware para manejar rutas no encontradas
 const notFound = (req, res, next) => {
+  applyCorsHeaders(req, res);
   const error = new Error(`Recurso no encontrado - ${req.originalUrl}`);
   res.status(404).json({
     exito: false,
