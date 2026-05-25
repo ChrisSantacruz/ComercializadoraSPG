@@ -90,6 +90,8 @@ class WompiService {
                 // Meta data para tracking y debugging
                 meta: {
                     order_reference: reference,
+                    delivery_method: paymentData.deliveryMethod || 'delivery',
+                    pickup_location: paymentData.pickupLocation?.name || undefined,
                     environment: process.env.NODE_ENV || 'development',
                     timestamp: new Date().toISOString()
                 }

@@ -308,6 +308,14 @@ export interface OrderDeliveryAddress {
   instrucciones?: string;
 }
 
+export interface PickupLocation {
+  name: string;
+  address: string;
+  instructions?: string;
+  schedule?: string;
+  contact?: string;
+}
+
 export interface OrderTimeline {
   estado: string;
   titulo: string;
@@ -357,6 +365,8 @@ export interface Order {
     paidAt?: string;
   };
   tipoEntrega?: DeliveryType;
+  deliveryMethod?: 'delivery' | 'pickup';
+  pickupLocation?: PickupLocation;
 
   envio?: {
     tipoEnvio?: string;
@@ -572,6 +582,8 @@ export interface OrderForm {
   }>;
   direccionEntrega: string | AddressForm | null;
   tipoEntrega: DeliveryType;
+  deliveryMethod?: 'delivery' | 'pickup';
+  pickupLocation?: PickupLocation;
   metodoPago: {
     tipo: 'PSE' | 'Nequi' | 'tarjeta_credito' | 'wompi' | 'wompi_card';
     datos: any;

@@ -8,6 +8,14 @@ const { enviarNotificacion } = require('../services/notificationService');
 const mongoose = require('mongoose');
 
 const SHIPPING_COST_COP = 18000;
+const DELIVERY_TYPES = ['domicilio', 'recoger_establecimiento'];
+const DEFAULT_PICKUP_LOCATION = {
+  name: 'Comercializadora SPG',
+  address: 'Pasto, Nariño',
+  instructions: 'Te avisaremos cuando el pedido esté listo. Lleva tu documento y el número de orden.',
+  schedule: 'Lunes a sábado · coordinación previa',
+  contact: 'Confirmación por teléfono o correo'
+};
 
 // Forzar recarga del módulo - temporal
 
@@ -21,12 +29,34 @@ const crearPedido = async (req, res) => {
       direccionEntrega,
       metodoPago,
       tipoEntrega = 'domicilio',
+      deliveryMethod,
+      pickupLocation,
       comentarios = '',
       idempotencyKey: bodyIdem
     } = req.body;
     const clienteId = req.usuario.id;
     const cliente = await User.findById(clienteId).select('nombre telefono').lean();
-    const esRecogidaEstablecimiento = tipoEntrega === 'recoger_establecimiento';
+    const tipoEntregaNormalizado = deliveryMethod === 'pickup'
+      ? 'recoger_establecimiento'
+      : deliveryMethod === 'delivery'
+        ? 'domicilio'
+        : tipoEntrega;
+
+    if (!DELIVERY_TYPES.includes(tipoEntregaNormalizado)) {
+      return res.status(400).json({
+        exito: false,
+        mensaje: 'Tipo de entrega inválido'
+      });
+    }
+
+    const esRecogidaEstablecimiento = tipoEntregaNormalizado === 'recoger_establecimiento';
+    const deliveryMethodNormalizado = esRecogidaEstablecimiento ? 'pickup' : 'delivery';
+    const pickupLocationNormalizada = esRecogidaEstablecimiento
+      ? {
+          ...DEFAULT_PICKUP_LOCATION,
+          ...(pickupLocation && typeof pickupLocation === 'object' ? pickupLocation : {})
+        }
+      : undefined;
     const idempotencyKey = (req.get('Idempotency-Key') || bodyIdem || '').trim().slice(0, 200);
 
     if (idempotencyKey) {
@@ -137,16 +167,16 @@ const crearPedido = async (req, res) => {
     const total = subtotal + impuestos + costoEnvio;
 
     const instruccionesEntrega = esRecogidaEstablecimiento
-      ? ['Recoger en establecimiento', comentarios].filter(Boolean).join('. ')
+      ? [pickupLocationNormalizada.instructions, comentarios].filter(Boolean).join('. ')
       : [direccionCompleta.instruccionesEntrega, comentarios].filter(Boolean).join('. ');
 
     const direccionNormalizada = esRecogidaEstablecimiento
       ? {
           nombre: cliente?.nombre || 'Cliente',
           telefono: cliente?.telefono || '',
-          calle: 'Recoger en establecimiento',
-          ciudad: 'Coordinar con el comercio',
-          departamento: 'Sin envío',
+          calle: pickupLocationNormalizada.address,
+          ciudad: 'Pasto',
+          departamento: 'Nariño',
           codigoPostal: '',
           pais: 'Colombia',
           instrucciones: instruccionesEntrega
@@ -175,14 +205,15 @@ const crearPedido = async (req, res) => {
       costoEnvio,
       descuentos: 0,
       total,
-      tipoEntrega,
+      tipoEntrega: tipoEntregaNormalizado,
+      deliveryMethod: deliveryMethodNormalizado,
+      pickupLocation: pickupLocationNormalizada,
       estado: 'pendiente',
       direccionEntrega: direccionNormalizada,
       metodoPago: {
         tipo: metodoPago.tipo,
         estado: 'pendiente',
-        transaccionId: `TXN_${Date.now()}`,
-        fechaPago: new Date()
+        transaccionId: `TXN_${Date.now()}`
       },
       envio: {
         tipoEnvio: esRecogidaEstablecimiento ? 'recoger_tienda' : 'normal'

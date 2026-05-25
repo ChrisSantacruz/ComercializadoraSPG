@@ -169,7 +169,7 @@ export const ProductFormMainSections: React.FC<ProductFormMainSectionsProps> = (
             id="stock"
             label={hasVariants ? 'Stock total (variantes)' : 'Stock disponible'}
             error={errors.stock}
-            hint={hasVariants ? 'Calculado automáticamente como suma del stock de variantes activas.' : 'Unidades vendibles.'}
+            hint={hasVariants ? 'Calculado automáticamente desde las combinaciones de variantes.' : 'Se usará como stock inicial al generar combinaciones.'}
           >
             <Input
               type="number"
@@ -252,6 +252,7 @@ export const ProductFormMainSections: React.FC<ProductFormMainSectionsProps> = (
         <ProductVariantBuilder
           variants={variants}
           basePrice={draft.precio}
+          baseStock={draft.stock}
           disabled={disabled}
           onChange={onVariantsChange}
         />

@@ -55,6 +55,29 @@ const wompiController = {
                 });
             }
 
+            const userId = (req.usuario?._id || req.usuario?.id)?.toString();
+            const order = await Order.findById(orderData.orderId).populate('cliente', 'nombre email telefono');
+            if (!order) {
+                return res.status(404).json({
+                    success: false,
+                    message: 'Orden no encontrada'
+                });
+            }
+            if (userId && order.cliente?._id?.toString() !== userId) {
+                return res.status(403).json({
+                    success: false,
+                    message: 'No tienes permisos para procesar esta orden'
+                });
+            }
+            if (Number(orderData.amount) !== Number(order.total)) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'El monto del pago no coincide con el total del pedido'
+                });
+            }
+
+            const isPickupOrder = order.tipoEntrega === 'recoger_establecimiento' || order.deliveryMethod === 'pickup';
+
             // Validar monto mínimo de Wompi (1,500 COP = 150,000 centavos)
             const minimumAmount = 1500;
             if (orderData.amount < minimumAmount) {
@@ -79,15 +102,15 @@ const wompiController = {
 
             // Preparar datos del cliente desde el request
             const customerData = {
-                name: orderData.customerData?.fullName || 'Cliente',
-                phone: (orderData.customerData?.phoneNumber || '').toString().replace(/\s/g, '') || '3000000000',
-                email: orderData.customerData?.email || '',
+                name: orderData.customerData?.fullName || order.cliente?.nombre || 'Cliente',
+                phone: (orderData.customerData?.phoneNumber || order.cliente?.telefono || '').toString().replace(/\s/g, '') || '3000000000',
+                email: orderData.customerData?.email || order.cliente?.email || '',
                 document: legalIdRaw,
                 documentType: orderData.customerData?.legalIdType || 'CC'
             };
 
-            // Agregar dirección si está disponible
-            if (orderData.shippingAddress) {
+            // Agregar dirección solo para entrega a domicilio; pickup nunca debe enviar shipping a Wompi.
+            if (!isPickupOrder && orderData.shippingAddress) {
                 customerData.address = {
                     street: orderData.shippingAddress.addressLine1,
                     city: orderData.shippingAddress.city,
@@ -102,12 +125,23 @@ const wompiController = {
                 currency: orderData.currency || 'COP',
                 reference: orderData.orderId,
                 customerData,
+                deliveryMethod: isPickupOrder ? 'pickup' : 'delivery',
+                pickupLocation: isPickupOrder ? (order.pickupLocation || orderData.pickupLocation) : undefined,
                 redirectUrl: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/payment/wompi/return?orderId=${orderData.orderId}&reference=${orderData.orderId}`
             };
 
             const result = await wompiService.createPaymentLink(paymentData);
 
             if (result.success) {
+                order.paymentInfo = {
+                    method: 'wompi',
+                    paymentLinkId: result.data?.data?.id,
+                    paymentUrl: result.data?.data?.permalink,
+                    paymentStatus: 'pending'
+                };
+                order.estado = 'payment_pending';
+                await order.save();
+
                 res.json({
                     success: true,
                     data: {
@@ -175,6 +209,8 @@ const wompiController = {
                 });
             }
 
+            const isPickupOrder = order.tipoEntrega === 'recoger_establecimiento' || order.deliveryMethod === 'pickup';
+
             // Preparar datos del cliente con validaciones mejoradas
             const customerData = {
                 name: order.direccionEntrega?.nombre || order.cliente.nombre || order.cliente.nombreCompleto || 'Cliente',
@@ -185,7 +221,7 @@ const wompiController = {
             };
 
             // Solo agregar dirección si tenemos datos completos
-            if (order.direccionEntrega?.calle && order.direccionEntrega?.ciudad) {
+            if (!isPickupOrder && order.direccionEntrega?.calle && order.direccionEntrega?.ciudad) {
                 customerData.address = {
                     street: order.direccionEntrega.calle,
                     city: order.direccionEntrega.ciudad,
@@ -195,7 +231,7 @@ const wompiController = {
             }
 
             // Si es un objeto Address, extraer los datos correctamente
-            if (order.direccionEntrega && typeof order.direccionEntrega === 'object' && order.direccionEntrega.direccion) {
+            if (!isPickupOrder && order.direccionEntrega && typeof order.direccionEntrega === 'object' && order.direccionEntrega.direccion) {
                 customerData.name = order.direccionEntrega.nombreDestinatario || customerData.name;
                 customerData.phone = order.direccionEntrega.telefono || customerData.phone;
                 customerData.address = {
@@ -221,6 +257,8 @@ const wompiController = {
                 currency: 'COP',
                 reference: order._id.toString(),
                 customerData,
+                deliveryMethod: isPickupOrder ? 'pickup' : 'delivery',
+                pickupLocation: isPickupOrder ? order.pickupLocation : undefined,
                 redirectUrl: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/payment/wompi/return?orderId=${order._id}&reference=${order._id}`
             };
 

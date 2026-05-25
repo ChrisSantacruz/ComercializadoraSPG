@@ -4,6 +4,14 @@ interface PaymentLinkData {
   orderId: string;
   amount?: number;
   currency?: string;
+  deliveryMethod?: 'delivery' | 'pickup';
+  pickupLocation?: {
+    name: string;
+    address: string;
+    instructions?: string;
+    schedule?: string;
+    contact?: string;
+  };
   customerData?: {
     fullName: string;
     email: string;

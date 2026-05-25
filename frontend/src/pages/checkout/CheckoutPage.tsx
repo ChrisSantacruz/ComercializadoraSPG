@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useForm, useWatch, type Resolver } from 'react-hook-form';
 import type { Address, Cart, CartItem, DeliveryType, OrderForm } from '../../types';
 import { cartService } from '../../services/cartService';
 import { addressService } from '../../services/addressService';
@@ -13,19 +15,147 @@ import { useNotifications } from '../../components/ui/NotificationContainer';
 import { useAuthStore } from '../../stores/authStore';
 import { BRAND_NAME } from '../../components/nav/navData';
 import { getDepartamentos, getCiudadesPorDepartamento } from '../../utils/colombiaData';
+import { queryKeys } from '../../lib/query/queryKeys';
 import {
+  BuildingStorefrontIcon,
   CheckIcon,
   ChatBubbleBottomCenterTextIcon,
+  ClockIcon,
   MapPinIcon,
   PhoneIcon,
+  TruckIcon,
 } from '@heroicons/react/24/outline';
 
 const CHECKOUT_DRAFT_KEY = 'spg_checkout_draft_v1';
+const PICKUP_LOCATION = {
+  name: 'Comercializadora SPG',
+  address: 'Pasto, Nariño',
+  instructions: 'Te avisaremos cuando el pedido esté listo. Lleva tu documento y el número de orden.',
+  schedule: 'Lunes a sábado · coordinación previa',
+  contact: 'Confirmación por teléfono o correo'
+};
+
+type CheckoutFormValues = {
+  deliveryType: DeliveryType;
+  selectedAddress: string;
+  useNewAddress: boolean;
+  comments: string;
+  acceptedTerms: boolean;
+  payerDocument: string;
+  otraCiudad: string;
+  newAddress: Address;
+};
+
+const createEmptyAddress = (): Address => ({
+  _id: '',
+  alias: 'nueva',
+  nombreDestinatario: '',
+  telefono: '',
+  direccion: {
+    calle: '',
+    numero: '',
+    apartamento: '',
+    barrio: '',
+    ciudad: '',
+    departamento: '',
+    codigoPostal: '',
+    pais: 'Colombia'
+  },
+  tipo: 'casa',
+  instruccionesEntrega: '',
+  configuracion: {
+    esPredeterminada: false,
+    esFacturacion: false,
+    esEnvio: true,
+    activa: true
+  },
+  direccionCompleta: '',
+  estadisticas: {
+    vecesUsada: 0,
+    entregasExitosas: 0,
+    entregasFallidas: 0
+  }
+});
+
+const checkoutResolver: Resolver<CheckoutFormValues> = async (values) => {
+  const errors: Record<string, any> = {};
+  const isPickup = values.deliveryType === 'recoger_establecimiento';
+
+  if (!isPickup && !values.useNewAddress && !values.selectedAddress) {
+    errors.selectedAddress = {
+      type: 'required',
+      message: 'Selecciona una dirección de entrega'
+    };
+  }
+
+  if (!isPickup && values.useNewAddress) {
+    const address = values.newAddress;
+    const fieldErrors: Record<string, any> = {};
+    if (!address.nombreDestinatario?.trim()) {
+      fieldErrors.nombreDestinatario = { type: 'required', message: 'Indica el nombre del destinatario' };
+    }
+    if (!address.telefono?.trim()) {
+      fieldErrors.telefono = { type: 'required', message: 'Indica un teléfono de contacto' };
+    }
+    if (!address.direccion?.calle?.trim()) {
+      fieldErrors.direccion = {
+        ...(fieldErrors.direccion || {}),
+        calle: { type: 'required', message: 'Indica la dirección completa' }
+      };
+    }
+    if (!address.direccion?.departamento?.trim()) {
+      fieldErrors.direccion = {
+        ...(fieldErrors.direccion || {}),
+        departamento: { type: 'required', message: 'Selecciona el departamento' }
+      };
+    }
+    if (!address.direccion?.ciudad?.trim()) {
+      fieldErrors.direccion = {
+        ...(fieldErrors.direccion || {}),
+        ciudad: { type: 'required', message: 'Selecciona la ciudad' }
+      };
+    }
+    if (address.direccion?.ciudad === 'Otra' && !values.otraCiudad.trim()) {
+      errors.otraCiudad = { type: 'required', message: 'Debes especificar el nombre de la ciudad' };
+    }
+    if (Object.keys(fieldErrors).length > 0) {
+      errors.newAddress = fieldErrors;
+    }
+  }
+
+  if (!values.acceptedTerms) {
+    errors.acceptedTerms = {
+      type: 'required',
+      message: 'Debes aceptar los términos y condiciones'
+    };
+  }
+
+  return {
+    values: Object.keys(errors).length ? {} as CheckoutFormValues : values,
+    errors
+  };
+};
+
+const getFirstValidationMessage = (errors: Record<string, any>): string => {
+  if (errors.selectedAddress?.message) return errors.selectedAddress.message;
+  if (errors.acceptedTerms?.message) return errors.acceptedTerms.message;
+  if (errors.otraCiudad?.message) return errors.otraCiudad.message;
+  const addressErrors = errors.newAddress;
+  return (
+    addressErrors?.nombreDestinatario?.message ||
+    addressErrors?.telefono?.message ||
+    addressErrors?.direccion?.calle?.message ||
+    addressErrors?.direccion?.departamento?.message ||
+    addressErrors?.direccion?.ciudad?.message ||
+    'Revisa los campos obligatorios antes de continuar'
+  );
+};
 
 const CheckoutPageOptimized: React.FC = () => {
   const navigate = useNavigate();
   const { showError, showSuccess } = useNotifications();
   const { user } = useAuthStore();
+  const queryClient = useQueryClient();
 
   const idempotencyKeyRef = useRef<string | null>(null);
   const paymentSubmitLock = useRef(false);
@@ -55,36 +185,7 @@ const CheckoutPageOptimized: React.FC = () => {
   const [useNewAddress, setUseNewAddress] = useState(false);
   const [comments, setComments] = useState('');
   const [acceptedTerms, setAcceptedTerms] = useState(false);
-  const [newAddress, setNewAddress] = useState<Address>({
-    _id: '',
-    alias: 'nueva',
-    nombreDestinatario: '',
-    telefono: '',
-    direccion: {
-      calle: '',
-      numero: '',
-      apartamento: '',
-      barrio: '',
-      ciudad: '',
-      departamento: '',
-      codigoPostal: '',
-      pais: 'Colombia'
-    },
-    tipo: 'casa',
-    instruccionesEntrega: '',
-    configuracion: {
-      esPredeterminada: false,
-      esFacturacion: false,
-      esEnvio: true,
-      activa: true
-    },
-    direccionCompleta: '',
-    estadisticas: {
-      vecesUsada: 0,
-      entregasExitosas: 0,
-      entregasFallidas: 0
-    }
-  });
+  const [newAddress, setNewAddress] = useState<Address>(() => createEmptyAddress());
 
   // Estados para método de pago
   const [paymentMethod] = useState<'wompi'>('wompi');
@@ -96,6 +197,67 @@ const CheckoutPageOptimized: React.FC = () => {
   const [otraCiudad, setOtraCiudad] = useState('');
   const departamentos = getDepartamentos();
   const isStorePickup = deliveryType === 'recoger_establecimiento';
+  const {
+    control,
+    setValue,
+    trigger,
+    clearErrors,
+    resetField,
+    getValues
+  } = useForm<CheckoutFormValues>({
+    defaultValues: {
+      deliveryType,
+      selectedAddress,
+      useNewAddress,
+      comments,
+      acceptedTerms,
+      payerDocument,
+      otraCiudad,
+      newAddress
+    },
+    mode: 'onChange',
+    resolver: checkoutResolver,
+    shouldUnregister: false
+  });
+  const watchedDeliveryType = useWatch({ control, name: 'deliveryType' });
+
+  useEffect(() => {
+    setValue('deliveryType', deliveryType, { shouldValidate: false });
+  }, [deliveryType, setValue]);
+
+  useEffect(() => {
+    setValue('selectedAddress', selectedAddress, { shouldValidate: false });
+  }, [selectedAddress, setValue]);
+
+  useEffect(() => {
+    setValue('useNewAddress', useNewAddress, { shouldValidate: false });
+  }, [useNewAddress, setValue]);
+
+  useEffect(() => {
+    setValue('newAddress', newAddress, { shouldValidate: false });
+  }, [newAddress, setValue]);
+
+  useEffect(() => {
+    setValue('comments', comments, { shouldValidate: false });
+  }, [comments, setValue]);
+
+  useEffect(() => {
+    setValue('acceptedTerms', acceptedTerms, { shouldValidate: false });
+  }, [acceptedTerms, setValue]);
+
+  useEffect(() => {
+    setValue('payerDocument', payerDocument.replace(/\D/g, ''), { shouldValidate: false });
+  }, [payerDocument, setValue]);
+
+  useEffect(() => {
+    setValue('otraCiudad', otraCiudad, { shouldValidate: false });
+  }, [otraCiudad, setValue]);
+
+  useEffect(() => {
+    if (watchedDeliveryType === 'recoger_establecimiento') {
+      clearErrors(['selectedAddress', 'newAddress', 'otraCiudad']);
+    }
+  }, [clearErrors, watchedDeliveryType]);
 
   // Actualizar ciudades disponibles cuando cambie el departamento
   useEffect(() => {
@@ -135,6 +297,7 @@ const CheckoutPageOptimized: React.FC = () => {
       const d = JSON.parse(raw) as {
         savedAt?: number;
         step?: number;
+        deliveryType?: DeliveryType;
         selectedAddress?: string;
         useNewAddress?: boolean;
         comments?: string;
@@ -146,6 +309,10 @@ const CheckoutPageOptimized: React.FC = () => {
         return;
       }
       if (typeof d.step === 'number' && d.step >= 1 && d.step <= 2) setCurrentStep(d.step);
+      if (d.deliveryType === 'domicilio' || d.deliveryType === 'recoger_establecimiento') {
+        setDeliveryType(d.deliveryType);
+        setValue('deliveryType', d.deliveryType, { shouldValidate: false });
+      }
       if (d.selectedAddress) setSelectedAddress(d.selectedAddress);
       if (typeof d.useNewAddress === 'boolean') setUseNewAddress(d.useNewAddress);
       if (typeof d.comments === 'string') setComments(d.comments);
@@ -154,7 +321,7 @@ const CheckoutPageOptimized: React.FC = () => {
     } catch {
       sessionStorage.removeItem(CHECKOUT_DRAFT_KEY);
     }
-  }, [loading, cart?.productos?.length]);
+  }, [loading, cart?.productos?.length, setValue]);
 
   useEffect(() => {
     if (!cart?.productos?.length) return;
@@ -165,6 +332,7 @@ const CheckoutPageOptimized: React.FC = () => {
           JSON.stringify({
             savedAt: Date.now(),
             step: currentStep,
+            deliveryType,
             selectedAddress,
             useNewAddress,
             comments,
@@ -177,7 +345,7 @@ const CheckoutPageOptimized: React.FC = () => {
       }
     }, 500);
     return () => window.clearTimeout(t);
-  }, [currentStep, selectedAddress, useNewAddress, comments, acceptedTerms, payerDocument, cart?.productos?.length]);
+  }, [currentStep, deliveryType, selectedAddress, useNewAddress, comments, acceptedTerms, payerDocument, cart?.productos?.length]);
 
   const loadInitialData = async () => {
     try {
@@ -199,6 +367,7 @@ const CheckoutPageOptimized: React.FC = () => {
       }
       setCart(cartData);
       setDeliveryType(cartData.tipoEntrega || 'domicilio');
+      setValue('deliveryType', cartData.tipoEntrega || 'domicilio', { shouldValidate: false });
 
       // Cargar direcciones
       const addressesData = await addressService.getAddresses();
@@ -208,6 +377,7 @@ const CheckoutPageOptimized: React.FC = () => {
       const defaultAddress = addressesData.find((addr: any) => addr.configuracion?.esPredeterminada);
       if (defaultAddress) {
         setSelectedAddress(defaultAddress._id);
+        setValue('selectedAddress', defaultAddress._id, { shouldValidate: false });
       }
 
     } catch {
@@ -231,7 +401,18 @@ const CheckoutPageOptimized: React.FC = () => {
       setUpdatingDeliveryType(true);
       const updatedCart = await cartService.updateDeliveryType(tipoEntrega);
       setCart(updatedCart);
-      setDeliveryType(updatedCart.tipoEntrega || tipoEntrega);
+      const nextDeliveryType = updatedCart.tipoEntrega || tipoEntrega;
+      setDeliveryType(nextDeliveryType);
+      setValue('deliveryType', nextDeliveryType, { shouldDirty: true, shouldTouch: true, shouldValidate: false });
+      if (nextDeliveryType === 'recoger_establecimiento') {
+        setSelectedAddress('');
+        setUseNewAddress(false);
+        setOtraCiudad('');
+        resetField('selectedAddress', { defaultValue: '' });
+        resetField('useNewAddress', { defaultValue: false });
+        resetField('otraCiudad', { defaultValue: '' });
+        clearErrors(['selectedAddress', 'newAddress', 'otraCiudad']);
+      }
       setError('');
     } catch (deliveryError: any) {
       setError(deliveryError.message || 'No se pudo actualizar el tipo de entrega');
@@ -240,33 +421,12 @@ const CheckoutPageOptimized: React.FC = () => {
     }
   };
 
-  const validateForm = (): boolean => {
+  const validateForm = async (): Promise<boolean> => {
     setError('');
-
-    // Validar dirección
-    if (!isStorePickup && !useNewAddress && !selectedAddress) {
-      setError('Selecciona una dirección de entrega');
-      return false;
-    }
-
-    if (!isStorePickup && useNewAddress) {
-      if (!newAddress.nombreDestinatario || !newAddress.telefono || 
-          !newAddress.direccion.calle || !newAddress.direccion.ciudad ||
-          !newAddress.direccion.departamento) {
-        setError('Completa todos los campos obligatorios de la dirección');
-        return false;
-      }
-      
-      // Validar campo "Otra" ciudad
-      if (newAddress.direccion.ciudad === 'Otra' && !otraCiudad.trim()) {
-        setError('Debes especificar el nombre de la ciudad');
-        return false;
-      }
-    }
-
-    // Validar términos y condiciones
-    if (!acceptedTerms) {
-      setError('Debes aceptar los términos y condiciones');
+    const valid = await trigger();
+    if (!valid) {
+      const validation = await checkoutResolver(getValues(), undefined as any, {} as any);
+      setError(getFirstValidationMessage(validation.errors as Record<string, any>));
       return false;
     }
 
@@ -304,6 +464,8 @@ const CheckoutPageOptimized: React.FC = () => {
         })),
         direccionEntrega: finalAddress,
         tipoEntrega: deliveryType,
+        deliveryMethod: isStorePickup ? 'pickup' : 'delivery',
+        pickupLocation: isStorePickup ? PICKUP_LOCATION : undefined,
         metodoPago: {
           tipo: paymentMethod,
           datos: {}
@@ -332,64 +494,71 @@ const CheckoutPageOptimized: React.FC = () => {
     }
   };
 
-  const handleWompiPayment = async () => {
-    if (paymentSubmitLock.current || processingPayment) {
-      return;
-    }
-    paymentSubmitLock.current = true;
-    try {
+  const checkoutPaymentMutation = useMutation({
+    mutationKey: ['checkout', 'wompi-payment'],
+    retry: false,
+    mutationFn: async () => {
       const minimumAmount = 1500;
       if (!cart?.total || cart.total < minimumAmount) {
-        showError(
-          'Monto insuficiente',
+        throw new Error(
           `El monto mínimo para pagos con Wompi es $${minimumAmount.toLocaleString()} COP. Tu carrito tiene $${(cart?.total || 0).toLocaleString()} COP.`
         );
-        return;
       }
 
       const orderId = await handleCreateOrder();
       if (!orderId) {
-        return;
+        throw new Error('No se pudo crear la orden para iniciar el pago');
       }
 
       setProcessingPayment(true);
 
-      let address: Address;
-
-      if (useNewAddress) {
-        address = {
-          ...newAddress,
-          direccion: {
-            ...newAddress.direccion,
-            ciudad: newAddress.direccion.ciudad === 'Otra' ? otraCiudad : newAddress.direccion.ciudad
+      let address: Address | null = null;
+      if (!isStorePickup) {
+        if (useNewAddress) {
+          address = {
+            ...newAddress,
+            direccion: {
+              ...newAddress.direccion,
+              ciudad: newAddress.direccion.ciudad === 'Otra' ? otraCiudad : newAddress.direccion.ciudad
+            }
+          };
+        } else {
+          address = addresses.find((addr) => addr._id === selectedAddress) || null;
+          if (!address) {
+            throw new Error('No se ha seleccionado una dirección válida');
           }
-        };
-      } else {
-        const foundAddress = addresses.find((addr) => addr._id === selectedAddress);
-        if (!foundAddress) {
-          throw new Error('No se ha seleccionado una dirección válida');
         }
-        address = foundAddress;
+
+        if (!address.nombreDestinatario || !address.telefono || !address.direccion?.calle) {
+          throw new Error('Los datos de la dirección están incompletos');
+        }
       }
 
-      if (!address.nombreDestinatario || !address.telefono || !address.direccion?.calle) {
-        throw new Error('Los datos de la dirección están incompletos');
-      }
-
-      const customerFullName = (user?.nombre?.trim() || address.nombreDestinatario).trim();
+      const customerFullName = (
+        user?.nombre?.trim() ||
+        address?.nombreDestinatario ||
+        'Cliente Comercializadora SPG'
+      ).trim();
+      const customerPhone = (
+        isStorePickup
+          ? user?.telefono || address?.telefono || '3000000000'
+          : address?.telefono
+      ) || '3000000000';
 
       const paymentData = {
-        orderId: orderId,
-        amount: cart?.total || 0,
+        orderId,
+        amount: cart.total,
         currency: 'COP',
+        deliveryMethod: (isStorePickup ? 'pickup' : 'delivery') as 'pickup' | 'delivery',
+        pickupLocation: isStorePickup ? PICKUP_LOCATION : undefined,
         customerData: {
           fullName: customerFullName,
           email: user?.email || '',
-          phoneNumber: address.telefono,
+          phoneNumber: customerPhone,
           legalId: payerDocument.replace(/\D/g, ''),
           legalIdType: 'CC'
         },
-        ...(isStorePickup || !address ? {} : {
+        ...(!isStorePickup && address ? {
           shippingAddress: {
             addressLine1: address.direccion.calle,
             city: address.direccion.ciudad,
@@ -397,24 +566,47 @@ const CheckoutPageOptimized: React.FC = () => {
             region: address.direccion.departamento,
             postalCode: address.direccion.codigoPostal || '110111'
           }
-        })
+        } : {})
       };
 
       const paymentResult = await wompiService.createPaymentLink(paymentData);
-
-      if (paymentResult.success && paymentResult.data?.paymentUrl) {
-        await cartService.clearCart();
-        sessionStorage.removeItem(CHECKOUT_DRAFT_KEY);
-        showSuccess('Redirigiendo a Wompi', 'Te redirigiremos a la página de pago segura en unos momentos…');
-        window.setTimeout(() => {
-          window.location.href = paymentResult.data.paymentUrl;
-        }, 1200);
-      } else {
+      if (!paymentResult.success || !paymentResult.data?.paymentUrl) {
         const errorMsg = paymentResult.error
           ? wompiService.getErrorMessage(paymentResult.error)
           : paymentResult.message || 'Error desconocido al crear enlace de pago';
-        setError(`Error al crear enlace de pago: ${errorMsg}`);
+        throw new Error(`Error al crear enlace de pago: ${errorMsg}`);
       }
+
+      return paymentResult.data.paymentUrl as string;
+    },
+    onSuccess: async (paymentUrl) => {
+      await cartService.clearCart();
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.cart.all }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.orders.all })
+      ]);
+      sessionStorage.removeItem(CHECKOUT_DRAFT_KEY);
+      showSuccess('Redirigiendo a Wompi', 'Te redirigiremos a la página de pago segura en unos momentos…');
+      window.setTimeout(() => {
+        window.location.href = paymentUrl;
+      }, 1200);
+    },
+    onError: (paymentError: unknown) => {
+      const msg = paymentError instanceof Error ? paymentError.message : 'Error al procesar el pago con Wompi';
+      setError(msg);
+    },
+    onSettled: () => {
+      setProcessingPayment(false);
+    }
+  });
+
+  const handleWompiPayment = async () => {
+    if (paymentSubmitLock.current || processingPayment || checkoutPaymentMutation.isPending) {
+      return;
+    }
+    paymentSubmitLock.current = true;
+    try {
+      await checkoutPaymentMutation.mutateAsync();
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : 'Error al procesar el pago con Wompi';
       setError(msg);
@@ -424,8 +616,8 @@ const CheckoutPageOptimized: React.FC = () => {
     }
   };
 
-  const handleNextStep = () => {
-    if (currentStep === 1 && validateForm()) {
+  const handleNextStep = async () => {
+    if (currentStep === 1 && await validateForm()) {
       setCurrentStep(2);
     }
   };
@@ -436,8 +628,8 @@ const CheckoutPageOptimized: React.FC = () => {
     }
   };
 
-  const handlePayment = () => {
-    if (!validateForm()) return;
+  const handlePayment = async () => {
+    if (!await validateForm()) return;
     const digits = payerDocument.replace(/\D/g, '');
     if (digits.length < 6 || digits.length > 11) {
       setPayerDocumentTouched(true);
@@ -447,6 +639,8 @@ const CheckoutPageOptimized: React.FC = () => {
     setError('');
     handleWompiPayment();
   };
+
+  const isCheckoutBusy = processingPayment || checkoutPaymentMutation.isPending;
 
   if (loading) {
     return (
@@ -548,32 +742,54 @@ const CheckoutPageOptimized: React.FC = () => {
                     Método de entrega
                   </h2>
 
-                  <div className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-2">
                     <button
                       type="button"
                       onClick={() => handleDeliveryTypeChange('domicilio')}
                       disabled={updatingDeliveryType}
-                      className={`rounded-xl border p-4 text-left transition-colors ${
+                      aria-pressed={deliveryType === 'domicilio'}
+                      className={`group rounded-2xl border p-5 text-left shadow-sm transition-all duration-200 ${
                         deliveryType === 'domicilio'
-                          ? 'border-blue-600 bg-blue-50 shadow-sm'
-                          : 'border-gray-200 hover:border-gray-300'
+                          ? 'border-blue-600 bg-blue-50 ring-2 ring-blue-100'
+                          : 'border-gray-200 bg-white hover:-translate-y-0.5 hover:border-gray-300 hover:shadow-md'
                       } ${updatingDeliveryType ? 'cursor-not-allowed opacity-60' : ''}`}
                     >
-                      <p className="font-semibold text-gray-900 mb-1">Envío a domicilio</p>
-                      <p className="text-sm text-gray-600">Recibe tu pedido en la dirección que selecciones.</p>
+                      <div className="mb-4 flex items-center justify-between gap-3">
+                        <div className={`flex h-11 w-11 items-center justify-center rounded-xl ${
+                          deliveryType === 'domicilio' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600'
+                        }`}>
+                          <TruckIcon className="h-6 w-6" aria-hidden />
+                        </div>
+                        {deliveryType === 'domicilio' && (
+                          <span className="rounded-full bg-blue-600 px-3 py-1 text-xs font-semibold text-white">Activo</span>
+                        )}
+                      </div>
+                      <p className="mb-1 font-semibold text-gray-900">Envío a domicilio</p>
+                      <p className="text-sm leading-6 text-gray-600">Recibe tu pedido en una dirección guardada o nueva con validación completa.</p>
                     </button>
                     <button
                       type="button"
                       onClick={() => handleDeliveryTypeChange('recoger_establecimiento')}
                       disabled={updatingDeliveryType}
-                      className={`rounded-xl border p-4 text-left transition-colors ${
+                      aria-pressed={deliveryType === 'recoger_establecimiento'}
+                      className={`group rounded-2xl border p-5 text-left shadow-sm transition-all duration-200 ${
                         deliveryType === 'recoger_establecimiento'
-                          ? 'border-green-600 bg-green-50 shadow-sm'
-                          : 'border-gray-200 hover:border-gray-300'
+                          ? 'border-green-600 bg-green-50 ring-2 ring-green-100'
+                          : 'border-gray-200 bg-white hover:-translate-y-0.5 hover:border-gray-300 hover:shadow-md'
                       } ${updatingDeliveryType ? 'cursor-not-allowed opacity-60' : ''}`}
                     >
-                      <p className="font-semibold text-gray-900 mb-1">Recoger en establecimiento</p>
-                      <p className="text-sm text-gray-600">El envío no se cobra y coordinaremos la recogida contigo.</p>
+                      <div className="mb-4 flex items-center justify-between gap-3">
+                        <div className={`flex h-11 w-11 items-center justify-center rounded-xl ${
+                          deliveryType === 'recoger_establecimiento' ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-600'
+                        }`}>
+                          <BuildingStorefrontIcon className="h-6 w-6" aria-hidden />
+                        </div>
+                        {deliveryType === 'recoger_establecimiento' && (
+                          <span className="rounded-full bg-green-600 px-3 py-1 text-xs font-semibold text-white">Activo</span>
+                        )}
+                      </div>
+                      <p className="mb-1 font-semibold text-gray-900">Recoger en ubicación</p>
+                      <p className="text-sm leading-6 text-gray-600">Sin dirección de entrega, sin costo de envío y con coordinación directa.</p>
                     </button>
                   </div>
 
@@ -776,11 +992,42 @@ const CheckoutPageOptimized: React.FC = () => {
                   )}
 
                   {isStorePickup && (
-                    <div className="mb-6 rounded-lg border border-green-200 bg-green-50 p-4">
-                      <h3 className="text-lg font-medium text-green-900 mb-2">Recogida en establecimiento</h3>
-                      <p className="text-sm text-green-800">
-                        Tu pedido quedará listo para recoger y te contactaremos para coordinar el retiro. No necesitas registrar una dirección y el envío queda en $0.
-                      </p>
+                    <div className="mb-6 overflow-hidden rounded-2xl border border-green-200 bg-gradient-to-br from-green-50 via-white to-white shadow-sm">
+                      <div className="border-b border-green-100 p-5">
+                        <div className="flex items-start gap-4">
+                          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-green-600 text-white shadow-sm">
+                            <BuildingStorefrontIcon className="h-7 w-7" aria-hidden />
+                          </div>
+                          <div>
+                            <p className="text-xs font-semibold uppercase tracking-wide text-green-700">Recogida confirmada</p>
+                            <h3 className="mt-1 text-lg font-semibold text-gray-950">Recogerás tu pedido en:</h3>
+                            <p className="mt-2 text-base font-semibold text-gray-900">{PICKUP_LOCATION.name}</p>
+                            <p className="mt-1 flex items-center gap-1.5 text-sm text-gray-600">
+                              <MapPinIcon className="h-4 w-4 text-green-600" aria-hidden />
+                              {PICKUP_LOCATION.address}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="grid gap-3 p-5 text-sm text-gray-700 sm:grid-cols-2">
+                        <div className="rounded-xl bg-white p-4 ring-1 ring-green-100">
+                          <p className="mb-1 flex items-center gap-2 font-medium text-gray-900">
+                            <ClockIcon className="h-4 w-4 text-green-600" aria-hidden />
+                            Horario
+                          </p>
+                          <p>{PICKUP_LOCATION.schedule}</p>
+                        </div>
+                        <div className="rounded-xl bg-white p-4 ring-1 ring-green-100">
+                          <p className="mb-1 flex items-center gap-2 font-medium text-gray-900">
+                            <PhoneIcon className="h-4 w-4 text-green-600" aria-hidden />
+                            Contacto
+                          </p>
+                          <p>{PICKUP_LOCATION.contact}</p>
+                        </div>
+                        <p className="sm:col-span-2 rounded-xl bg-green-600/5 p-4 leading-6 text-green-900">
+                          {PICKUP_LOCATION.instructions} No necesitas registrar dirección y el envío queda en $0.
+                        </p>
+                      </div>
                     </div>
                   )}
 
@@ -904,10 +1151,10 @@ const CheckoutPageOptimized: React.FC = () => {
                     <div className="flex justify-end">
                       <button
                         onClick={handlePayment}
-                        disabled={processingPayment}
+                        disabled={isCheckoutBusy}
                         className="btn-primary flex items-center disabled:opacity-50 disabled:cursor-not-allowed text-lg px-8 py-3"
                       >
-                        {processingPayment ? (
+                        {isCheckoutBusy ? (
                           <>
                             <LoadingSpinner size="sm" />
                             <span className="ml-2">Procesando...</span>
@@ -927,7 +1174,7 @@ const CheckoutPageOptimized: React.FC = () => {
                     </div>
                     
                     {/* Indicador de estado del pago */}
-                    {processingPayment && (
+                    {isCheckoutBusy && (
                       <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                         <div className="flex items-center gap-3">
                           <div className="animate-spin rounded-full h-6 w-6 border-2 border-blue-600 border-t-transparent"></div>
@@ -1021,10 +1268,13 @@ const CheckoutPageOptimized: React.FC = () => {
                     Entrega:
                   </h4>
                   {isStorePickup ? (
-                    <div className="text-sm text-green-700 space-y-1">
-                      <p className="font-medium">Recoger en establecimiento</p>
-                      <p>No se cobra envío.</p>
-                      <p>Te contactaremos para coordinar la recogida.</p>
+                    <div className="rounded-xl border border-green-200 bg-green-50 p-3 text-sm text-green-900">
+                      <p className="font-semibold">{PICKUP_LOCATION.name}</p>
+                      <p className="mt-1 flex items-center gap-1.5">
+                        <MapPinIcon className="h-4 w-4 text-green-700" aria-hidden />
+                        {PICKUP_LOCATION.address}
+                      </p>
+                      <p className="mt-2 text-green-800">Sin costo de envío. Te contactaremos para coordinar la recogida.</p>
                     </div>
                   ) : useNewAddress ? (
                     <div className="text-sm text-gray-600 space-y-1">
@@ -1105,7 +1355,7 @@ const CheckoutPageOptimized: React.FC = () => {
                 Continuar
               </Button>
             ) : (
-              <Button size="lg" variant="primary" loading={processingPayment} onClick={handlePayment}>
+              <Button size="lg" variant="primary" loading={isCheckoutBusy} onClick={handlePayment}>
                 Pagar
               </Button>
             )}

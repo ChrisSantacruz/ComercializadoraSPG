@@ -18,6 +18,7 @@ type AttributeDraft = {
 interface ProductVariantBuilderProps {
   variants: ProductVariantDraft[];
   basePrice: string;
+  baseStock: string;
   disabled?: boolean;
   onChange: (variants: ProductVariantDraft[]) => void;
 }
@@ -61,6 +62,7 @@ const attributesLabel = (attributes: Record<string, string>) =>
 export const ProductVariantBuilder: React.FC<ProductVariantBuilderProps> = ({
   variants,
   basePrice,
+  baseStock,
   disabled,
   onChange,
 }) => {
@@ -105,6 +107,11 @@ export const ProductVariantBuilder: React.FC<ProductVariantBuilderProps> = ({
 
   const generateVariants = () => {
     const existing = new Map(variants.map((variant) => [signatureFor(variant.attributes), variant]));
+    const parsedBaseStock = Math.max(0, Math.floor(Number(baseStock) || 0));
+    const generatedCount = generatedPreview.length || 1;
+    const stockPerVariant = Math.floor(parsedBaseStock / generatedCount);
+    const stockRemainder = parsedBaseStock % generatedCount;
+
     const next = generatedPreview.map((attributesSet, index) => {
       const existingVariant = existing.get(signatureFor(attributesSet));
       if (existingVariant) return existingVariant;
@@ -114,7 +121,7 @@ export const ProductVariantBuilder: React.FC<ProductVariantBuilderProps> = ({
         attributes: attributesSet,
         precio: basePrice || '',
         precioOferta: '',
-        stock: '0',
+        stock: String(stockPerVariant + (index < stockRemainder ? 1 : 0)),
         imagenes: [],
         activo: true,
         isDefault: variants.length === 0 && index === 0,

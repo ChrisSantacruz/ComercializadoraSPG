@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 
 const DELIVERY_TYPES = ['domicilio', 'recoger_establecimiento'];
+const DELIVERY_METHODS = ['delivery', 'pickup'];
 
 const orderSchema = new mongoose.Schema({
   numeroOrden: {
@@ -88,6 +89,20 @@ const orderSchema = new mongoose.Schema({
     type: String,
     enum: DELIVERY_TYPES,
     default: 'domicilio'
+  },
+
+  deliveryMethod: {
+    type: String,
+    enum: DELIVERY_METHODS,
+    default: 'delivery'
+  },
+
+  pickupLocation: {
+    name: String,
+    address: String,
+    instructions: String,
+    schedule: String,
+    contact: String
   },
   
   // Estado general del pedido
