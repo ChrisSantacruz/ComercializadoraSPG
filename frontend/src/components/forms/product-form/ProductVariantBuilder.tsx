@@ -216,87 +216,118 @@ export const ProductVariantBuilder: React.FC<ProductVariantBuilderProps> = ({
       </div>
 
       {variants.length > 0 ? (
-        <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white">
-          <div className="hidden min-w-full overflow-x-auto lg:block">
-            <table className="min-w-full divide-y divide-gray-100 text-sm">
-              <thead className="bg-gray-50 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
-                <tr>
-                  <th className="px-4 py-3">Combinación</th>
-                  <th className="px-4 py-3">SKU</th>
-                  <th className="px-4 py-3">Precio</th>
-                  <th className="px-4 py-3">Oferta</th>
-                  <th className="px-4 py-3">Stock</th>
-                  <th className="px-4 py-3">Imagen</th>
-                  <th className="px-4 py-3 text-right">Estado</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {variants.map((variant, index) => (
-                  <tr key={`${signatureFor(variant.attributes)}-${index}`} className="align-top">
-                    <td className="max-w-xs px-4 py-3 font-medium text-gray-950">{attributesLabel(variant.attributes)}</td>
-                    <td className="px-4 py-3">
-                      <Input value={variant.sku} onChange={(event) => updateVariant(index, { sku: event.target.value })} disabled={disabled} placeholder="Auto" />
-                    </td>
-                    <td className="px-4 py-3">
-                      <Input type="number" value={variant.precio} onChange={(event) => updateVariant(index, { precio: event.target.value })} disabled={disabled} min="0" step="100" />
-                    </td>
-                    <td className="px-4 py-3">
-                      <Input type="number" value={variant.precioOferta} onChange={(event) => updateVariant(index, { precioOferta: event.target.value })} disabled={disabled} min="0" step="100" placeholder="Opcional" />
-                    </td>
-                    <td className="px-4 py-3">
-                      <Input type="number" value={variant.stock} onChange={(event) => updateVariant(index, { stock: event.target.value })} disabled={disabled} min="0" />
-                    </td>
-                    <td className="px-4 py-3">
-                      <Input value={variant.imagenes[0]?.url || ''} onChange={(event) => updateVariantImage(index, event.target.value)} disabled={disabled} placeholder="URL de imagen" />
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex justify-end gap-2">
-                        <Button type="button" size="sm" variant={variant.isDefault ? 'primary' : 'outline'} onClick={() => setDefaultVariant(index)} disabled={disabled}>
-                          Default
-                        </Button>
-                        <Button type="button" size="sm" variant={variant.activo ? 'outline' : 'secondary'} onClick={() => updateVariant(index, { activo: !variant.activo })} disabled={disabled}>
-                          {variant.activo ? 'Activo' : 'Inactivo'}
-                        </Button>
-                        <Button type="button" size="sm" variant="ghost" onClick={() => removeVariant(index)} disabled={disabled} aria-label="Eliminar variante">
-                          <TrashIcon className="h-4 w-4" aria-hidden />
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          <div className="space-y-3 p-3 lg:hidden">
-            {variants.map((variant, index) => (
-              <div key={`${signatureFor(variant.attributes)}-${index}`} className="rounded-xl border border-gray-200 p-3">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
+        <div className="space-y-3">
+          {variants.map((variant, index) => (
+            <div
+              key={`${signatureFor(variant.attributes)}-${index}`}
+              className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm"
+            >
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
                     <p className="text-sm font-semibold text-gray-950">{attributesLabel(variant.attributes)}</p>
-                    {variant.isDefault ? <p className="mt-1 text-xs font-medium text-primary-700">Variante principal</p> : null}
+                    {variant.isDefault ? (
+                      <span className="rounded-full bg-primary-50 px-2 py-0.5 text-xs font-semibold text-primary-700">
+                        Variante principal
+                      </span>
+                    ) : null}
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
+                        variant.activo ? 'bg-success-50 text-success-700' : 'bg-gray-100 text-gray-600'
+                      }`}
+                    >
+                      {variant.activo ? 'Activa' : 'Inactiva'}
+                    </span>
                   </div>
-                  <button type="button" onClick={() => setDefaultVariant(index)} disabled={disabled} className="text-primary-700 disabled:opacity-40">
-                    <CheckCircleIcon className="h-5 w-5" aria-hidden />
-                  </button>
+                  <p className="mt-1 text-xs text-gray-500">Edita el precio, stock e imagen de esta combinación.</p>
                 </div>
-                <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                  <FormField id={`variant-sku-${index}`} label="SKU">
-                    <Input value={variant.sku} onChange={(event) => updateVariant(index, { sku: event.target.value })} disabled={disabled} placeholder="Auto" />
-                  </FormField>
-                  <FormField id={`variant-stock-${index}`} label="Stock">
-                    <Input type="number" value={variant.stock} onChange={(event) => updateVariant(index, { stock: event.target.value })} disabled={disabled} min="0" />
-                  </FormField>
-                  <FormField id={`variant-price-${index}`} label="Precio">
-                    <Input type="number" value={variant.precio} onChange={(event) => updateVariant(index, { precio: event.target.value })} disabled={disabled} min="0" step="100" />
-                  </FormField>
-                  <FormField id={`variant-image-${index}`} label="Imagen">
-                    <Input value={variant.imagenes[0]?.url || ''} onChange={(event) => updateVariantImage(index, event.target.value)} disabled={disabled} placeholder="URL de imagen" />
-                  </FormField>
+
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={variant.isDefault ? 'primary' : 'outline'}
+                    onClick={() => setDefaultVariant(index)}
+                    disabled={disabled}
+                  >
+                    <CheckCircleIcon className="mr-1.5 h-4 w-4" aria-hidden />
+                    Principal
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={variant.activo ? 'outline' : 'secondary'}
+                    onClick={() => updateVariant(index, { activo: !variant.activo })}
+                    disabled={disabled}
+                  >
+                    {variant.activo ? 'Desactivar' : 'Activar'}
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => removeVariant(index)}
+                    disabled={disabled}
+                    aria-label="Eliminar variante"
+                  >
+                    <TrashIcon className="h-4 w-4" aria-hidden />
+                  </Button>
                 </div>
               </div>
-            ))}
-          </div>
+
+              <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(120px,1fr)_minmax(140px,1fr)_minmax(140px,1fr)_minmax(120px,0.8fr)_minmax(220px,1.4fr)]">
+                <FormField id={`variant-sku-${index}`} label="SKU">
+                  <Input
+                    value={variant.sku}
+                    onChange={(event) => updateVariant(index, { sku: event.target.value })}
+                    disabled={disabled}
+                    placeholder="Auto"
+                  />
+                </FormField>
+                <FormField id={`variant-price-${index}`} label="Precio">
+                  <Input
+                    type="number"
+                    value={variant.precio}
+                    onChange={(event) => updateVariant(index, { precio: event.target.value })}
+                    disabled={disabled}
+                    min="0"
+                    step="100"
+                    inputMode="numeric"
+                  />
+                </FormField>
+                <FormField id={`variant-offer-${index}`} label="Oferta">
+                  <Input
+                    type="number"
+                    value={variant.precioOferta}
+                    onChange={(event) => updateVariant(index, { precioOferta: event.target.value })}
+                    disabled={disabled}
+                    min="0"
+                    step="100"
+                    inputMode="numeric"
+                    placeholder="Opcional"
+                  />
+                </FormField>
+                <FormField id={`variant-stock-${index}`} label="Stock">
+                  <Input
+                    type="number"
+                    value={variant.stock}
+                    onChange={(event) => updateVariant(index, { stock: event.target.value })}
+                    disabled={disabled}
+                    min="0"
+                    inputMode="numeric"
+                  />
+                </FormField>
+                <FormField id={`variant-image-${index}`} label="Imagen">
+                  <Input
+                    value={variant.imagenes[0]?.url || ''}
+                    onChange={(event) => updateVariantImage(index, event.target.value)}
+                    disabled={disabled}
+                    placeholder="URL de imagen"
+                  />
+                </FormField>
+              </div>
+            </div>
+          ))}
         </div>
       ) : (
         <div className="rounded-2xl border border-dashed border-gray-300 bg-white p-6 text-center">
