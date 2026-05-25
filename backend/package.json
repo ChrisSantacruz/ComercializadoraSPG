@@ -10,7 +10,8 @@
     "setup": "node setupWompi.js",
     "test-wompi": "node testWompiComplete.js",
     "test-wompi-simple": "node testWompiSimple.js",
-    "test-email": "node probarEmail.js"
+    "test-email": "node probarEmail.js",
+    "seed:categories": "node scripts/seed-active-categories.js"
   },
   "keywords": [
     "comercializadora",

@@ -84,3 +84,12 @@ El retry manual del formulario llama `refetch()` sobre la misma query key, sin r
 - Smoke real de creación por API: `POST /api/products` respondió `201`, persistió la categoría enviada y el producto temporal fue eliminado después de la prueba.
 
 No se validó visualmente en navegador real desde esta sesión; el checklist responsive y de consola queda en `docs/testing/categories-debug-e2e.md` para QA manual.
+
+## Restaurar categorías en cualquier entorno
+
+```bash
+cd backend
+npm run seed:categories
+```
+
+Crea o reactiva las 15 categorías base con `estado: "activa"`. Ejecutar en staging/producción si el formulario muestra “No hay categorías activas”.
