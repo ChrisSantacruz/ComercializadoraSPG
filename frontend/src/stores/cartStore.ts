@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import { Cart } from '../types';
+import { Cart, DeliveryType } from '../types';
 import { cartService } from '../services/cartService';
 import { notifyCartError, notifyCartSuccess, type NotificationAction } from '../lib/appNotifications';
 import { safeInt, safeMoney } from '../lib/safeNumeric';
@@ -142,6 +142,24 @@ export const useCartStore = create<CartState>()(
         } catch (error: unknown) {
           const message =
             error instanceof Error ? error.message : 'Error al limpiar carrito';
+          set({
+            error: message,
+            isLoading: false,
+          });
+          notifyCartError('Carrito', message);
+          throw error;
+        }
+      },
+
+      updateDeliveryType: async (tipoEntrega: DeliveryType) => {
+        set({ isLoading: true, error: null });
+        try {
+          const cart = await cartService.updateDeliveryType(tipoEntrega);
+          syncCartQuery(cart);
+          set({ cart, isLoading: false });
+        } catch (error: unknown) {
+          const message =
+            error instanceof Error ? error.message : 'Error al actualizar tipo de entrega';
           set({
             error: message,
             isLoading: false,

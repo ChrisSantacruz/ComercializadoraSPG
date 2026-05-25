@@ -1,5 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import type { Address, Cart, CartItem, DeliveryType, OrderForm } from '../../types';
+import { cartService } from '../../services/cartService';
+import { addressService } from '../../services/addressService';
+import { orderService } from '../../services/orderService';
+import wompiService from '../../services/wompiService';
 import LoadingSpinner from '../../components/ui/LoadingSpinner';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
@@ -100,7 +105,7 @@ const CheckoutPageOptimized: React.FC = () => {
       
       // Si la ciudad actual no está en la nueva lista, limpiarla
       if (!ciudades.includes(newAddress.direccion.ciudad) && newAddress.direccion.ciudad !== 'Otra') {
-        setNewAddress(prev => ({
+        setNewAddress((prev: Address) => ({
           ...prev,
           direccion: {
             ...prev.direccion,
@@ -288,7 +293,7 @@ const CheckoutPageOptimized: React.FC = () => {
 
       // Preparar datos de la orden
       const orderData: OrderForm = {
-        productos: cart!.productos.map(item => ({
+        productos: cart!.productos.map((item: CartItem) => ({
           producto: item.producto._id,
           cantidad: item.cantidad,
           precio: item.producto.precio,
@@ -369,6 +374,8 @@ const CheckoutPageOptimized: React.FC = () => {
       if (!address.nombreDestinatario || !address.telefono || !address.direccion?.calle) {
         throw new Error('Los datos de la dirección están incompletos');
       }
+
+      const customerFullName = (user?.nombre?.trim() || address.nombreDestinatario).trim();
 
       const paymentData = {
         orderId: orderId,
@@ -663,7 +670,7 @@ const CheckoutPageOptimized: React.FC = () => {
                           <input
                             type="text"
                             value={newAddress.nombreDestinatario}
-                            onChange={(e) => setNewAddress(prev => ({
+                            onChange={(e) => setNewAddress((prev: Address) => ({
                               ...prev,
                               nombreDestinatario: e.target.value
                             }))}
@@ -679,7 +686,7 @@ const CheckoutPageOptimized: React.FC = () => {
                           <input
                             type="tel"
                             value={newAddress.telefono}
-                            onChange={(e) => setNewAddress(prev => ({
+                            onChange={(e) => setNewAddress((prev: Address) => ({
                               ...prev,
                               telefono: e.target.value
                             }))}
@@ -695,7 +702,7 @@ const CheckoutPageOptimized: React.FC = () => {
                           <input
                             type="text"
                             value={newAddress.direccion.calle}
-                            onChange={(e) => setNewAddress(prev => ({
+                            onChange={(e) => setNewAddress((prev: Address) => ({
                               ...prev,
                               direccion: { ...prev.direccion, calle: e.target.value }
                             }))}
@@ -710,7 +717,7 @@ const CheckoutPageOptimized: React.FC = () => {
                           </label>
                           <select
                             value={newAddress.direccion.departamento}
-                            onChange={(e) => setNewAddress(prev => ({
+                            onChange={(e) => setNewAddress((prev: Address) => ({
                               ...prev,
                               direccion: { ...prev.direccion, departamento: e.target.value, ciudad: '' }
                             }))}
@@ -730,7 +737,7 @@ const CheckoutPageOptimized: React.FC = () => {
                           <select
                             value={newAddress.direccion.ciudad}
                             onChange={(e) => {
-                              setNewAddress(prev => ({
+                              setNewAddress((prev: Address) => ({
                                 ...prev,
                                 direccion: { ...prev.direccion, ciudad: e.target.value }
                               }));
@@ -951,7 +958,7 @@ const CheckoutPageOptimized: React.FC = () => {
               
               {/* Productos */}
               <div className="space-y-3 mb-4">
-                {cart.productos.map((item, index) => (
+                {cart.productos.map((item: CartItem, index: number) => (
                   <div key={`${item.producto._id}-${index}`} className="flex justify-between text-sm border-b border-gray-100 pb-2">
                     <div className="flex-1">
                       <p className="font-medium text-gray-900 line-clamp-2">{item.producto.nombre}</p>

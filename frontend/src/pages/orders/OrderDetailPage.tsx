@@ -212,6 +212,8 @@ const OrderDetailPage: React.FC = () => {
   }
 
   const timeline = buildOrderTimelineFromOrder(order);
+  const isStorePickup =
+    order.tipoEntrega === 'recoger_establecimiento' || order.envio?.tipoEnvio === 'recoger_tienda';
 
   return (
     <div className="min-h-screen bg-gray-50 py-8">

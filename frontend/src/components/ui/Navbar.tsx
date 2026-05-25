@@ -22,7 +22,7 @@ import { BRAND_NAME, BRAND_TAGLINE } from '../nav/navData';
 import { useNavCategories } from '../../hooks/useNavCategories';
 
 const Navbar: React.FC = () => {
-  const { isAuthenticated, logout } = useAuthStore();
+  const { isAuthenticated, logout, user } = useAuthStore();
   const { getItemCount } = useCartStore();
   const { showError } = useNotifications();
   const navigate = useNavigate();

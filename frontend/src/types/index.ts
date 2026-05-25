@@ -305,7 +305,10 @@ export interface Order {
     transactionId?: string;
     paidAt?: string;
   };
+  tipoEntrega?: DeliveryType;
+
   envio?: {
+    tipoEnvio?: string;
     empresa?: string;
     numeroGuia?: string;
     fechaEnvio?: string;

@@ -65,22 +65,6 @@ const CartPage: React.FC = () => {
     });
   };
 
-  const handleDeliveryTypeChange = async (tipoEntrega: DeliveryType) => {
-    if (!cart || cart.tipoEntrega === tipoEntrega) {
-      return;
-    }
-
-    try {
-      setUpdatingDeliveryType(true);
-      await updateStoreDeliveryType(tipoEntrega);
-      setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error actualizando tipo de entrega');
-    } finally {
-      setUpdatingDeliveryType(false);
-    }
-  };
-
   const handleCheckout = () => {
     if (!cart || cart.productos.length === 0) {
       showWarning('Carrito vacío', 'Agrega productos antes de ir al checkout.');
