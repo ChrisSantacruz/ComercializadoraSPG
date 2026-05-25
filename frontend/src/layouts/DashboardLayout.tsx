@@ -74,10 +74,16 @@ const DashboardLayout: React.FC = () => {
 
   const navigationItems = getNavigationItems();
 
+  const isNavActive = (href: string) => {
+    if (href === '/') return location.pathname === '/';
+    if (href === '/merchant') return location.pathname === '/merchant';
+    return location.pathname === href || location.pathname.startsWith(`${href}/`);
+  };
+
   const navLinkClass = (href: string) =>
     cn(
       'group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
-      location.pathname === href || (href !== '/' && location.pathname.startsWith(href))
+      isNavActive(href)
         ? 'bg-primary-50 text-primary-800'
         : 'text-gray-700 hover:bg-gray-100 hover:text-gray-900',
     );

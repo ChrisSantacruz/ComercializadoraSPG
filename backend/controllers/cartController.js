@@ -5,10 +5,23 @@ const { successResponse, errorResponse } = require('../utils/helpers');
 
 const DELIVERY_TYPES = ['domicilio', 'recoger_establecimiento'];
 
+const normalizeId = (value) => (value ? String(value) : '');
+
+const getPurchasableVariant = (producto, variantId) => {
+  if (!variantId) return null;
+  const variant = producto.variants?.id ? producto.variants.id(variantId) : producto.variants?.find((v) => String(v._id) === String(variantId));
+  if (!variant || variant.activo === false) {
+    const error = new Error('Variante no disponible');
+    error.statusCode = 400;
+    throw error;
+  }
+  return variant;
+};
+
 const populateCartProducts = async (carrito) => {
   await carrito.populate({
     path: 'productos.producto',
-    select: 'nombre precio imagenes stock estado comerciante',
+    select: 'nombre precio imagenes stock estado comerciante variants',
     populate: {
       path: 'comerciante',
       select: 'nombre'
@@ -26,7 +39,7 @@ const obtenerCarrito = async (req, res) => {
     let carrito = await Cart.findOne({ usuario: req.usuario.id })
       .populate({
         path: 'productos.producto',
-        select: 'nombre precio imagenes stock estado comerciante',
+        select: 'nombre precio imagenes stock estado comerciante variants',
         populate: {
           path: 'comerciante',
           select: 'nombre'
@@ -46,7 +59,11 @@ const obtenerCarrito = async (req, res) => {
 
     // Verificar disponibilidad de productos
     const productosDisponibles = carrito.productos.filter(item => {
-      return item.producto && item.producto.estado === 'aprobado' && item.producto.stock > 0;
+      const variant = item.variantId && item.producto.variants?.find
+        ? item.producto.variants.find((v) => normalizeId(v._id) === normalizeId(item.variantId))
+        : null;
+      const stock = variant ? variant.stock : item.producto.stock;
+      return item.producto && ['aprobado', 'approved'].includes(item.producto.estado) && stock > 0 && (!variant || variant.activo !== false);
     });
 
     if (productosDisponibles.length !== carrito.productos.length) {
@@ -78,7 +95,7 @@ const obtenerCarrito = async (req, res) => {
 const agregarAlCarrito = async (req, res) => {
   try {
     // Las validaciones ya se manejan en el middleware
-    const { productoId, cantidad } = req.body;
+    const { productoId, cantidad, variantId } = req.body;
 
     // Verificar que el producto existe y está disponible
     const producto = await Product.findById(productoId);
@@ -90,8 +107,18 @@ const agregarAlCarrito = async (req, res) => {
       return errorResponse(res, 'Producto no disponible para compra', 400);
     }
 
-    if (producto.stock < cantidad) {
-      return errorResponse(res, `Stock insuficiente. Disponible: ${producto.stock}`, 400);
+    const selectedVariant = getPurchasableVariant(producto, variantId);
+    const availableStock = selectedVariant ? selectedVariant.stock : producto.stock;
+    const unitPrice = selectedVariant
+      ? (selectedVariant.precioOferta || selectedVariant.precio)
+      : (producto.precioOferta || producto.precio);
+    const image = selectedVariant?.imagenes?.[0]?.url
+      || producto.imagenPrincipal
+      || (producto.imagenes && producto.imagenes.length > 0 ? producto.imagenes[0].url : '')
+      || '';
+
+    if (availableStock < cantidad) {
+      return errorResponse(res, `Stock insuficiente. Disponible: ${availableStock}`, 400);
     }
 
     // Obtener o crear carrito
@@ -104,31 +131,37 @@ const agregarAlCarrito = async (req, res) => {
     }
 
     // Verificar si el producto ya está en el carrito
-    const productoExistente = carrito.productos.find(item => 
-      item.producto.toString() === productoId
+    const productoExistente = carrito.productos.find(item =>
+      item.producto.toString() === productoId && normalizeId(item.variantId) === normalizeId(variantId)
     );
 
     if (productoExistente) {
       const nuevaCantidad = productoExistente.cantidad + cantidad;
-      if (nuevaCantidad > producto.stock) {
-        return errorResponse(res, `Stock insuficiente. Disponible: ${producto.stock}`, 400);
+      if (nuevaCantidad > availableStock) {
+        return errorResponse(res, `Stock insuficiente. Disponible: ${availableStock}`, 400);
       }
       productoExistente.cantidad = nuevaCantidad;
-      console.log(`➕ Actualizando producto existente: ${productoExistente.nombre}, cantidad: ${nuevaCantidad}`);
     } else {
       carrito.productos.push({
         producto: productoId,
+        variantId: selectedVariant?._id,
+        variante: selectedVariant
+          ? {
+              sku: selectedVariant.sku,
+              attributes: selectedVariant.attributes,
+              imagen: image
+            }
+          : undefined,
         cantidad,
-        precio: producto.precio,
-        precioOferta: producto.precioOferta,
-        subtotal: cantidad * (producto.precioOferta || producto.precio),
+        precio: selectedVariant?.precio || producto.precio,
+        precioOferta: selectedVariant?.precioOferta || producto.precioOferta,
+        subtotal: cantidad * unitPrice,
         nombre: producto.nombre,
-        imagen: producto.imagenPrincipal || (producto.imagenes && producto.imagenes.length > 0 ? producto.imagenes[0].url : '') || '',
+        imagen: image,
         comerciante: producto.comerciante,
-        stockDisponible: producto.stock,
-        disponible: producto.stock >= cantidad
+        stockDisponible: availableStock,
+        disponible: availableStock >= cantidad
       });
-      console.log(`➕ Agregando nuevo producto: ${producto.nombre}, cantidad: ${cantidad}`);
     }
 
     // Recalcular totales (ahora también actualiza subtotales de items)
@@ -143,13 +176,14 @@ const agregarAlCarrito = async (req, res) => {
     
     await carrito.save();
     
-    console.log(`💾 Carrito guardado. Productos: ${carrito.productos.length}, Subtotal: ${carrito.subtotal}, Total: ${carrito.total}`);
-
     await populateCartProducts(carrito);
 
     successResponse(res, 'Producto agregado al carrito exitosamente', carrito);
 
   } catch (error) {
+    if (error.statusCode) {
+      return errorResponse(res, error.message, error.statusCode);
+    }
     console.error('Error agregando producto al carrito:', error);
     errorResponse(res, 'Error interno del servidor', 500);
   }
@@ -160,7 +194,7 @@ const agregarAlCarrito = async (req, res) => {
 // @access  Private
 const actualizarCantidad = async (req, res) => {
   try {
-    const { cantidad, productoId } = req.body;
+    const { cantidad, productoId, variantId } = req.body;
     const { productId } = req.params;
     
     // Usar productId de la URL si está disponible, sino usar productoId del body
@@ -180,8 +214,11 @@ const actualizarCantidad = async (req, res) => {
       return errorResponse(res, 'Producto no encontrado', 404);
     }
 
-    if (producto.stock < cantidad) {
-      return errorResponse(res, `Stock insuficiente. Disponible: ${producto.stock}`, 400);
+    const selectedVariant = getPurchasableVariant(producto, variantId);
+    const availableStock = selectedVariant ? selectedVariant.stock : producto.stock;
+
+    if (availableStock < cantidad) {
+      return errorResponse(res, `Stock insuficiente. Disponible: ${availableStock}`, 400);
     }
 
     const carrito = await Cart.findOne({ usuario: req.usuario.id });
@@ -189,18 +226,15 @@ const actualizarCantidad = async (req, res) => {
       return errorResponse(res, 'Carrito no encontrado', 404);
     }
 
-    const productoEnCarrito = carrito.productos.find(item => 
-      item.producto.toString() === idProducto
+    const productoEnCarrito = carrito.productos.find(item =>
+      item.producto.toString() === idProducto && normalizeId(item.variantId) === normalizeId(variantId)
     );
 
     if (!productoEnCarrito) {
       return errorResponse(res, 'Producto no encontrado en el carrito', 404);
     }
 
-    const cantidadAnterior = productoEnCarrito.cantidad;
     productoEnCarrito.cantidad = cantidad;
-    
-    console.log(`📝 Actualizando cantidad: ${cantidadAnterior} → ${cantidad}`);
     
     // Recalcular totales (ahora también actualiza subtotales de items)
     carrito.calcularTotales();
@@ -213,13 +247,14 @@ const actualizarCantidad = async (req, res) => {
     
     await carrito.save();
     
-    console.log(`💾 Cantidad actualizada. Subtotal item: ${productoEnCarrito.subtotal}, Subtotal total: ${carrito.subtotal}`);
-
     await populateCartProducts(carrito);
 
     successResponse(res, 'Cantidad actualizada exitosamente', carrito);
 
   } catch (error) {
+    if (error.statusCode) {
+      return errorResponse(res, error.message, error.statusCode);
+    }
     console.error('Error actualizando cantidad:', error);
     errorResponse(res, 'Error interno del servidor', 500);
   }
@@ -237,12 +272,11 @@ const eliminarDelCarrito = async (req, res) => {
       return errorResponse(res, 'Carrito no encontrado', 404);
     }
 
-    const cantidadAnterior = carrito.productos.length;
-    carrito.productos = carrito.productos.filter(item => 
-      item.producto.toString() !== productoId
+    const { variantId } = req.query;
+
+    carrito.productos = carrito.productos.filter(item =>
+      !(item.producto.toString() === productoId && normalizeId(item.variantId) === normalizeId(variantId))
     );
-    
-    console.log(`🗑️ Producto eliminado. Productos antes: ${cantidadAnterior}, después: ${carrito.productos.length}`);
 
     // Recalcular totales
     carrito.calcularTotales();
@@ -256,8 +290,6 @@ const eliminarDelCarrito = async (req, res) => {
     
     await carrito.save();
     
-    console.log(`💾 Carrito guardado. Subtotal: ${carrito.subtotal}, Total: ${carrito.total}`);
-
     await populateCartProducts(carrito);
 
     successResponse(res, 'Producto eliminado del carrito exitosamente', carrito);

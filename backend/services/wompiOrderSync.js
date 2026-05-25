@@ -83,16 +83,31 @@ async function syncOrderWithTransaction(transaction) {
 
       for (const item of order.productos) {
         try {
-          const updated = await Product.findOneAndUpdate(
-            { _id: item.producto, stock: { $gte: item.cantidad } },
-            {
-              $inc: {
-                stock: -item.cantidad,
-                'estadisticas.cantidadVendida': item.cantidad
+          const query = item.variantId
+            ? {
+                _id: item.producto,
+                'variants._id': item.variantId,
+                'variants.stock': { $gte: item.cantidad },
+                'variants.activo': { $ne: false }
               }
-            },
-            { new: true }
-          );
+            : { _id: item.producto, stock: { $gte: item.cantidad } };
+
+          const update = item.variantId
+            ? {
+                $inc: {
+                  stock: -item.cantidad,
+                  'variants.$.stock': -item.cantidad,
+                  'estadisticas.cantidadVendida': item.cantidad
+                }
+              }
+            : {
+                $inc: {
+                  stock: -item.cantidad,
+                  'estadisticas.cantidadVendida': item.cantidad
+                }
+              };
+
+          const updated = await Product.findOneAndUpdate(query, update, { new: true });
           if (!updated) {
             // eslint-disable-next-line no-console
             console.error(`wompiOrderSync: stock insuficiente o producto ausente ${item.producto}`);

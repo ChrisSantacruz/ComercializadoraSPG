@@ -12,6 +12,7 @@ export type AddToCartOptions = {
   successTitle?: string;
   successMessage?: string;
   silent?: boolean;
+  variantId?: string;
 };
 
 function readCartSnapshot(qc: QueryClient): Cart | null {
@@ -44,11 +45,13 @@ export function useCartMutations() {
     mutationFn: ({
       productId,
       cantidad,
+      variantId,
     }: {
       productId: string;
       cantidad: number;
+      variantId?: string;
       options?: AddToCartOptions;
-    }) => cartService.addProduct(productId, cantidad),
+    }) => cartService.addProduct(productId, cantidad, variantId),
     onMutate: async () => {
       await qc.cancelQueries({ queryKey: queryKeys.cart.current() });
     },
@@ -71,13 +74,13 @@ export function useCartMutations() {
 
   const updateMutation = useMutation({
     mutationKey: ['cart', 'update'],
-    mutationFn: ({ productId, cantidad }: { productId: string; cantidad: number }) =>
-      cartService.updateQuantity(productId, cantidad),
-    onMutate: async ({ productId, cantidad }) => {
+    mutationFn: ({ productId, cantidad, variantId }: { productId: string; cantidad: number; variantId?: string }) =>
+      cartService.updateQuantity(productId, cantidad, variantId),
+    onMutate: async ({ productId, cantidad, variantId }) => {
       await qc.cancelQueries({ queryKey: queryKeys.cart.current() });
       const previousCart = readCartSnapshot(qc);
       if (previousCart) {
-        const next = patchCartLineQuantity(previousCart, productId, cantidad);
+        const next = patchCartLineQuantity(previousCart, productId, cantidad, variantId);
         qc.setQueryData(queryKeys.cart.current(), next);
         useCartStore.getState().syncCart(next);
       }
@@ -99,18 +102,18 @@ export function useCartMutations() {
 
   const removeMutation = useMutation({
     mutationKey: ['cart', 'remove'],
-    mutationFn: (productId: string) => cartService.removeProduct(productId),
-    onMutate: async (productId) => {
+    mutationFn: ({ productId, variantId }: { productId: string; variantId?: string }) => cartService.removeProduct(productId, variantId),
+    onMutate: async ({ productId, variantId }) => {
       await qc.cancelQueries({ queryKey: queryKeys.cart.current() });
       const previousCart = readCartSnapshot(qc);
       if (previousCart) {
-        const next = removeCartLine(previousCart, productId);
+        const next = removeCartLine(previousCart, productId, variantId);
         qc.setQueryData(queryKeys.cart.current(), next.productos.length ? next : null);
         useCartStore.getState().syncCart(next.productos.length ? next : null);
       }
       return { previousCart } as { previousCart: Cart | null };
     },
-    onError: (error: unknown, _id, ctx) => {
+    onError: (error: unknown, _vars, ctx) => {
       if (ctx?.previousCart !== undefined) {
         qc.setQueryData(queryKeys.cart.current(), ctx.previousCart);
         useCartStore.getState().syncCart(ctx.previousCart);

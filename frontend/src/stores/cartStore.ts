@@ -29,9 +29,9 @@ interface CartState {
   syncCart: (cart: Cart | null) => void;
 
   getCart: () => Promise<void>;
-  addToCart: (productId: string, cantidad: number, options?: AddToCartOptions) => Promise<void>;
-  updateQuantity: (productId: string, cantidad: number) => Promise<void>;
-  removeItem: (productId: string) => Promise<void>;
+  addToCart: (productId: string, cantidad: number, options?: AddToCartOptions & { variantId?: string }) => Promise<void>;
+  updateQuantity: (productId: string, cantidad: number, variantId?: string) => Promise<void>;
+  removeItem: (productId: string, variantId?: string) => Promise<void>;
   clearCart: () => Promise<void>;
   updateDeliveryType: (tipoEntrega: DeliveryType) => Promise<void>;
   applyCoupon: (codigo: string) => Promise<void>;
@@ -70,10 +70,10 @@ export const useCartStore = create<CartState>()(
         }
       },
 
-      addToCart: async (productId: string, cantidad: number, options?: AddToCartOptions) => {
+      addToCart: async (productId: string, cantidad: number, options?: AddToCartOptions & { variantId?: string }) => {
         set({ isLoading: true, error: null });
         try {
-          const cart = await cartService.addProduct(productId, cantidad);
+          const cart = await cartService.addProduct(productId, cantidad, options?.variantId);
           syncCartQuery(cart);
           set({ cart, isLoading: false });
           if (!options?.silent) {
@@ -95,10 +95,10 @@ export const useCartStore = create<CartState>()(
         }
       },
 
-      updateQuantity: async (productId: string, cantidad: number) => {
+      updateQuantity: async (productId: string, cantidad: number, variantId?: string) => {
         set({ isLoading: true, error: null });
         try {
-          const cart = await cartService.updateQuantity(productId, cantidad);
+          const cart = await cartService.updateQuantity(productId, cantidad, variantId);
           syncCartQuery(cart);
           set({ cart, isLoading: false });
         } catch (error: unknown) {
@@ -113,10 +113,10 @@ export const useCartStore = create<CartState>()(
         }
       },
 
-      removeItem: async (productId: string) => {
+      removeItem: async (productId: string, variantId?: string) => {
         set({ isLoading: true, error: null });
         try {
-          const cart = await cartService.removeProduct(productId);
+          const cart = await cartService.removeProduct(productId, variantId);
           syncCartQuery(cart);
           set({ cart, isLoading: false });
           notifyCartSuccess('Carrito', 'Producto eliminado del carrito');

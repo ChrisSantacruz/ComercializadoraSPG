@@ -83,6 +83,18 @@ export interface RegisterData {
 }
 
 // Productos
+export interface ProductVariant {
+  _id: string;
+  sku?: string;
+  attributes: Record<string, string>;
+  precio: number;
+  precioOferta?: number;
+  stock: number;
+  imagenes?: Array<string | { url?: string; alt?: string; orden?: number }>;
+  activo: boolean;
+  isDefault?: boolean;
+}
+
 export interface Product {
   _id: string;
   nombre: string;
@@ -144,6 +156,7 @@ export interface Product {
     totalIngresos: number;
   };
   precioOferta?: number;
+  variants?: ProductVariant[];
 }
 
 export interface ProductForm {
@@ -175,10 +188,18 @@ export interface Category {
 export interface CartItem {
   _id: string;
   producto: Product;
+  variantId?: string;
+  variante?: {
+    sku?: string;
+    attributes?: Record<string, string>;
+    imagen?: string;
+  };
   cantidad: number;
   precio: number;
   subtotal: number;
   imagen?: string;
+  stockDisponible?: number;
+  disponible?: boolean;
 }
 
 export interface Coupon {
@@ -243,6 +264,12 @@ export interface Address {
 export interface OrderProduct {
   _id: string;
   producto: Product;
+  variantId?: string;
+  variante?: {
+    sku?: string;
+    attributes?: Record<string, string>;
+    imagen?: string;
+  };
   comerciante: User;
   cantidad: number;
   precio: number;
@@ -522,6 +549,7 @@ export interface AddressForm {
 export interface OrderForm {
   productos: Array<{
     producto: string;
+    variantId?: string;
     cantidad: number;
   }>;
   direccionEntrega: string | AddressForm | null;

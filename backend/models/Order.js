@@ -23,6 +23,18 @@ const orderSchema = new mongoose.Schema({
       ref: 'Product',
       required: true
     },
+    variantId: {
+      type: mongoose.Schema.Types.ObjectId
+    },
+    variante: {
+      sku: String,
+      attributes: {
+        type: Map,
+        of: String,
+        default: {}
+      },
+      imagen: String
+    },
     comerciante: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',

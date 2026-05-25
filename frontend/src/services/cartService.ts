@@ -9,20 +9,22 @@ export const cartService = {
   },
 
   // Agregar producto al carrito
-  addProduct: async (productId: string, cantidad: number): Promise<Cart> => {
+  addProduct: async (productId: string, cantidad: number, variantId?: string): Promise<Cart> => {
     const response = await api.post('/cart/add', {
       productoId: productId,
       cantidad,
+      ...(variantId ? { variantId } : {}),
     });
     return handleApiResponse<Cart>(response);
   },
 
   // Actualizar cantidad de producto  
-  updateQuantity: async (productId: string, cantidad: number): Promise<Cart> => {
+  updateQuantity: async (productId: string, cantidad: number, variantId?: string): Promise<Cart> => {
     try {
       // Intentar la nueva ruta primero
       const response = await api.put(`/cart/update/${productId}`, {
         cantidad,
+        ...(variantId ? { variantId } : {}),
       });
       return handleApiResponse<Cart>(response);
     } catch (primary: unknown) {
@@ -31,6 +33,7 @@ export const cartService = {
         const response = await api.put('/cart/update', {
           productoId: productId,
           cantidad,
+          ...(variantId ? { variantId } : {}),
         });
         return handleApiResponse<Cart>(response);
       } catch {
@@ -40,8 +43,10 @@ export const cartService = {
   },
 
   // Remover producto del carrito
-  removeProduct: async (productId: string): Promise<Cart> => {
-    const response = await api.delete(`/cart/remove/${productId}`);
+  removeProduct: async (productId: string, variantId?: string): Promise<Cart> => {
+    const response = await api.delete(`/cart/remove/${productId}`, {
+      params: variantId ? { variantId } : undefined,
+    });
     return handleApiResponse<Cart>(response);
   },
 

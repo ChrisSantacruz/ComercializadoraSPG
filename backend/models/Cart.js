@@ -18,6 +18,18 @@ const cartSchema = new mongoose.Schema({
       ref: 'Product',
       required: true
     },
+    variantId: {
+      type: mongoose.Schema.Types.ObjectId
+    },
+    variante: {
+      sku: String,
+      attributes: {
+        type: Map,
+        of: String,
+        default: {}
+      },
+      imagen: String
+    },
     nombre: String,
     precio: Number,
     precioOferta: Number,
@@ -156,6 +168,7 @@ cartSchema.index({ usuario: 1 });
 cartSchema.index({ estado: 1 });
 cartSchema.index({ fechaUltimaActividad: 1 });
 cartSchema.index({ 'productos.producto': 1 });
+cartSchema.index({ 'productos.variantId': 1 });
 
 // Virtual para obtener cantidad total de productos
 cartSchema.virtual('cantidadTotal').get(function() {
@@ -197,28 +210,42 @@ cartSchema.pre('save', function(next) {
 
 // Método para agregar producto al carrito
 cartSchema.methods.agregarProducto = function(producto, cantidad = 1) {
+  const selectedVariant = arguments[2] || null;
   const productoExistente = this.productos.find(
-    p => p.producto.toString() === producto._id.toString()
+    p => p.producto.toString() === producto._id.toString() &&
+      String(p.variantId || '') === String(selectedVariant?._id || '')
   );
+  const unitPrice = selectedVariant
+    ? (selectedVariant.precioOferta || selectedVariant.precio)
+    : (producto.precioOferta || producto.precio);
+  const image = selectedVariant?.imagenes?.[0]?.url || producto.imagenPrincipal;
+  const stock = selectedVariant ? selectedVariant.stock : producto.stock;
   
   if (productoExistente) {
     // Actualizar cantidad si el producto ya existe
     productoExistente.cantidad += cantidad;
-    productoExistente.subtotal = productoExistente.cantidad * 
-      (producto.precioOferta || producto.precio);
+    productoExistente.subtotal = productoExistente.cantidad * unitPrice;
   } else {
     // Agregar nuevo producto
     this.productos.push({
       producto: producto._id,
+      variantId: selectedVariant?._id,
+      variante: selectedVariant
+        ? {
+            sku: selectedVariant.sku,
+            attributes: selectedVariant.attributes,
+            imagen: image
+          }
+        : undefined,
       nombre: producto.nombre,
-      precio: producto.precio,
-      precioOferta: producto.precioOferta,
-      imagen: producto.imagenPrincipal,
+      precio: selectedVariant?.precio || producto.precio,
+      precioOferta: selectedVariant?.precioOferta || producto.precioOferta,
+      imagen: image,
       cantidad,
-      subtotal: cantidad * (producto.precioOferta || producto.precio),
+      subtotal: cantidad * unitPrice,
       comerciante: producto.comerciante,
-      stockDisponible: producto.stock,
-      disponible: producto.stock >= cantidad
+      stockDisponible: stock,
+      disponible: stock >= cantidad
     });
   }
   
@@ -311,13 +338,6 @@ cartSchema.methods.calcularTotales = function() {
   this.set('costoEnvio', costoEnvio);
   this.set('total', isNaN(total) || total < 0 ? 0 : total);
   
-  console.log('💰 Totales calculados:', { 
-    subtotal: this.subtotal, 
-    descuentos: this.descuentos,
-    impuestos: this.impuestos, 
-    costoEnvio: this.costoEnvio, 
-    total: this.total 
-  });
 };
 
 // Método para aplicar cupón
@@ -353,11 +373,25 @@ cartSchema.methods.verificarDisponibilidad = async function() {
   for (let item of this.productos) {
     const producto = await Product.findById(item.producto);
     if (producto) {
-      item.stockDisponible = producto.stock;
-      item.disponible = producto.stock >= item.cantidad && producto.estado === 'aprobado';
-      item.precio = producto.precio;
-      item.precioOferta = producto.precioOferta;
-      item.subtotal = item.cantidad * (producto.precioOferta || producto.precio);
+      const variant = item.variantId && producto.variants?.id
+        ? producto.variants.id(item.variantId)
+        : null;
+      const stock = variant ? variant.stock : producto.stock;
+      const price = variant ? variant.precio : producto.precio;
+      const offerPrice = variant ? variant.precioOferta : producto.precioOferta;
+      item.stockDisponible = stock;
+      item.disponible = stock >= item.cantidad && ['aprobado', 'approved'].includes(producto.estado) && (!variant || variant.activo !== false);
+      item.precio = price;
+      item.precioOferta = offerPrice;
+      item.imagen = variant?.imagenes?.[0]?.url || item.imagen || producto.imagenPrincipal;
+      if (variant) {
+        item.variante = {
+          sku: variant.sku,
+          attributes: variant.attributes,
+          imagen: item.imagen
+        };
+      }
+      item.subtotal = item.cantidad * (offerPrice || price);
     } else {
       item.disponible = false;
     }

@@ -53,6 +53,68 @@ function mapUploadedFilesToImagenes(files, nombreBase) {
   return out;
 }
 
+function parseJsonField(value, fallback) {
+  if (value == null || value === '') return fallback;
+  if (typeof value !== 'string') return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return fallback;
+  }
+}
+
+function normalizeVariantImages(value, productName, index) {
+  const list = Array.isArray(value) ? value : [];
+  return list
+    .map((image, imageIndex) => {
+      const url = typeof image === 'string' ? image : image?.url;
+      if (!url || typeof url !== 'string') return null;
+      return {
+        url: url.trim(),
+        publicId: typeof image === 'object' ? image.publicId || image.public_id || null : null,
+        alt: (typeof image === 'object' && image.alt) || `${productName || 'Producto'} - Variante ${index + 1}`,
+        orden: Number.isFinite(Number(image?.orden)) ? Number(image.orden) : imageIndex,
+      };
+    })
+    .filter(Boolean);
+}
+
+function normalizeVariantsInput(rawVariants, productName, basePrice) {
+  const parsed = parseJsonField(rawVariants, []);
+  if (!Array.isArray(parsed)) return [];
+
+  return parsed
+    .map((variant, index) => {
+      const attributes = variant?.attributes && typeof variant.attributes === 'object'
+        ? Object.fromEntries(
+            Object.entries(variant.attributes)
+              .map(([key, value]) => [String(key).trim(), String(value || '').trim()])
+              .filter(([key, value]) => key && value),
+          )
+        : {};
+
+      if (Object.keys(attributes).length === 0) return null;
+
+      const precio = Number(variant.precio ?? basePrice);
+      const precioOferta = variant.precioOferta === '' || variant.precioOferta == null
+        ? undefined
+        : Number(variant.precioOferta);
+
+      return {
+        _id: variant._id,
+        sku: typeof variant.sku === 'string' ? variant.sku.trim() : '',
+        attributes,
+        precio: Number.isFinite(precio) ? precio : Number(basePrice || 0),
+        ...(Number.isFinite(precioOferta) && precioOferta > 0 ? { precioOferta } : {}),
+        stock: Number.isFinite(Number(variant.stock)) ? Number(variant.stock) : 0,
+        imagenes: normalizeVariantImages(variant.imagenes, productName, index),
+        activo: variant.activo !== false,
+        isDefault: variant.isDefault === true,
+      };
+    })
+    .filter(Boolean);
+}
+
 // @desc    Obtener todos los productos
 // @route   GET /api/products
 // @access  Public
@@ -279,12 +341,15 @@ const crearProducto = async (req, res) => {
     // Procesar tags si existen
     if (req.body.tags) {
       try {
-        datosProducto.tags = typeof req.body.tags === 'string' 
-          ? JSON.parse(req.body.tags) 
-          : req.body.tags;
+        datosProducto.tags = parseJsonField(req.body.tags, req.body.tags);
       } catch (e) {
         datosProducto.tags = req.body.tags.split(',').map(tag => tag.trim());
       }
+    }
+
+    const variants = normalizeVariantsInput(req.body.variants, datosProducto.nombre, datosProducto.precio);
+    if (variants.length > 0) {
+      datosProducto.variants = variants;
     }
 
     // Procesar especificaciones si existen
@@ -375,14 +440,18 @@ const actualizarProducto = async (req, res) => {
 
     if (b.tags) {
       try {
-        producto.tags =
-          typeof b.tags === 'string' ? JSON.parse(b.tags) : b.tags;
+        producto.tags = parseJsonField(b.tags, b.tags);
       } catch {
         producto.tags = String(b.tags)
           .split(',')
           .map((tag) => tag.trim())
           .filter(Boolean);
       }
+    }
+
+    if (b.variants != null) {
+      producto.variants = normalizeVariantsInput(b.variants, producto.nombre, producto.precio);
+      producto.markModified('variants');
     }
 
     if (b.especificaciones) {

@@ -295,6 +295,7 @@ const CheckoutPageOptimized: React.FC = () => {
       const orderData: OrderForm = {
         productos: cart!.productos.map((item: CartItem) => ({
           producto: item.producto._id,
+          ...(item.variantId ? { variantId: item.variantId } : {}),
           cantidad: item.cantidad,
           precio: item.producto.precio,
           comerciante: typeof item.producto.comerciante === 'string' 
@@ -962,6 +963,16 @@ const CheckoutPageOptimized: React.FC = () => {
                   <div key={`${item.producto._id}-${index}`} className="flex justify-between text-sm border-b border-gray-100 pb-2">
                     <div className="flex-1">
                       <p className="font-medium text-gray-900 line-clamp-2">{item.producto.nombre}</p>
+                      {item.variante?.attributes ? (
+                        <p className="mt-1 text-xs text-gray-500">
+                          {Object.entries(item.variante.attributes)
+                            .map(([key, value]) => `${key}: ${value}`)
+                            .join(' · ')}
+                        </p>
+                      ) : null}
+                      {item.variante?.sku ? (
+                        <p className="text-[11px] uppercase tracking-wide text-gray-400">SKU {item.variante.sku}</p>
+                      ) : null}
                       <p className="text-gray-600">Cantidad: {item.cantidad}</p>
                       <p className="text-xs text-gray-500">
                         ${item.precio.toLocaleString('es-CO')} c/u
@@ -1012,7 +1023,7 @@ const CheckoutPageOptimized: React.FC = () => {
                   {isStorePickup ? (
                     <div className="text-sm text-green-700 space-y-1">
                       <p className="font-medium">Recoger en establecimiento</p>
-                      <p>🏬 No se cobra envío.</p>
+                      <p>No se cobra envío.</p>
                       <p>Te contactaremos para coordinar la recogida.</p>
                     </div>
                   ) : useNewAddress ? (

@@ -8,7 +8,7 @@ import {
   ShieldCheckIcon,
   TruckIcon,
 } from '@heroicons/react/24/outline';
-import { Category, type User as AppUser, type Product } from '../../types';
+import { Category, type User as AppUser, type Product, type ProductVariant } from '../../types';
 import { useCartStore } from '../../stores/cartStore';
 import ErrorDisplay from '../../components/ui/ErrorDisplay';
 import { Container } from '../../components/ui/Container';
@@ -46,6 +46,94 @@ function StarRating({ value, max = 5 }: { value: number; max?: number }) {
         ),
       )}
     </span>
+  );
+}
+
+const variantAttributesLabel = (attributes?: Record<string, string>) =>
+  Object.entries(attributes || {})
+    .map(([key, value]) => `${key}: ${value}`)
+    .join(' · ');
+
+function VariantSelector({
+  variants,
+  selectedVariant,
+  onSelect,
+}: {
+  variants: ProductVariant[];
+  selectedVariant: ProductVariant | null;
+  onSelect: (variantId: string) => void;
+}) {
+  const activeVariants = variants.filter((variant) => variant.activo !== false);
+  const attributeNames = Array.from(
+    new Set(activeVariants.flatMap((variant) => Object.keys(variant.attributes || {}))),
+  );
+
+  if (activeVariants.length === 0 || attributeNames.length === 0) return null;
+
+  const getOptions = (attributeName: string) =>
+    Array.from(new Set(activeVariants.map((variant) => variant.attributes?.[attributeName]).filter(Boolean)));
+
+  const findVariantForOption = (attributeName: string, value: string) => {
+    const currentAttributes = selectedVariant?.attributes || {};
+    return activeVariants.find((variant) => {
+      const attrs = variant.attributes || {};
+      if (attrs[attributeName] !== value) return false;
+      return attributeNames.every((name) => {
+        if (name === attributeName) return true;
+        const selectedValue = currentAttributes[name];
+        return !selectedValue || attrs[name] === selectedValue;
+      });
+    }) || activeVariants.find((variant) => variant.attributes?.[attributeName] === value);
+  };
+
+  return (
+    <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-soft sm:p-5">
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-sm font-semibold text-gray-950">Opciones disponibles</p>
+          {selectedVariant ? (
+            <p className="mt-1 text-xs text-gray-500">{variantAttributesLabel(selectedVariant.attributes)}</p>
+          ) : null}
+        </div>
+        {selectedVariant?.sku ? (
+          <span className="rounded-full border border-gray-200 bg-gray-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+            SKU {selectedVariant.sku}
+          </span>
+        ) : null}
+      </div>
+
+      <div className="space-y-4">
+        {attributeNames.map((attributeName) => (
+          <div key={attributeName}>
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">{attributeName}</p>
+            <div className="flex flex-wrap gap-2">
+              {getOptions(attributeName).map((value) => {
+                const candidate = findVariantForOption(attributeName, value);
+                const isSelected = selectedVariant?.attributes?.[attributeName] === value;
+                const isDisabled = !candidate || candidate.stock <= 0;
+                return (
+                  <button
+                    key={`${attributeName}-${value}`}
+                    type="button"
+                    onClick={() => candidate && onSelect(candidate._id)}
+                    disabled={isDisabled}
+                    className={[
+                      'rounded-xl border px-3 py-2 text-sm font-medium transition',
+                      isSelected
+                        ? 'border-gray-950 bg-gray-950 text-white shadow-soft'
+                        : 'border-gray-200 bg-white text-gray-800 hover:border-gray-400',
+                      isDisabled ? 'cursor-not-allowed opacity-40 line-through' : '',
+                    ].join(' ')}
+                  >
+                    {value}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -94,6 +182,26 @@ const ProductDetailPage: React.FC = () => {
   const [quantity, setQuantity] = useState(1);
   const [addingToCart, setAddingToCart] = useState(false);
   const [tabIndex, setTabIndex] = useState(0);
+  const [selectedVariantId, setSelectedVariantId] = useState<string | null>(null);
+
+  const variants = useMemo(
+    () => (product?.variants || []).filter((variant) => variant.activo !== false),
+    [product?.variants],
+  );
+
+  const selectedVariant = useMemo(() => {
+    if (!variants.length) return null;
+    return (
+      variants.find((variant) => variant._id === selectedVariantId) ||
+      variants.find((variant) => variant.isDefault) ||
+      variants[0]
+    );
+  }, [selectedVariantId, variants]);
+
+  const selectedStock = selectedVariant ? safeInt(selectedVariant.stock, 0) : safeInt(product?.stock, 0);
+  const selectedPrice = selectedVariant
+    ? safeMoney(selectedVariant.precioOferta || selectedVariant.precio)
+    : safeMoney(product?.precio);
 
   const loadProduct = () => void refetch();
 
@@ -106,12 +214,30 @@ const ProductDetailPage: React.FC = () => {
 
   useEffect(() => {
     if (!product) return;
-    const stock = safeInt(product.stock, 0);
-    setQuantity((q) => Math.min(Math.max(1, q), Math.max(1, stock)));
-  }, [product]);
+    setQuantity((q) => Math.min(Math.max(1, q), Math.max(1, selectedStock)));
+  }, [product, selectedStock]);
+
+  useEffect(() => {
+    if (!variants.length) {
+      setSelectedVariantId(null);
+      return;
+    }
+    setSelectedVariantId((current) => {
+      if (current && variants.some((variant) => variant._id === current)) return current;
+      return (variants.find((variant) => variant.isDefault) || variants[0])._id;
+    });
+  }, [variants]);
 
   const galleryImages: GalleryImage[] = useMemo(() => {
     if (!product) return [];
+    const variantImages = selectedVariant?.imagenes;
+    if (variantImages?.length) {
+      return variantImages.map((img: string | { url?: string; alt?: string }) => {
+        const raw = typeof img === 'string' ? img : img.url ?? '';
+        const alt = typeof img === 'object' && img.alt ? img.alt : variantAttributesLabel(selectedVariant?.attributes) || product.nombre;
+        return { url: getImageUrl(raw), alt, rawSrc: raw || null };
+      });
+    }
     if (!product.imagenes?.length) {
       return [{ url: getImageUrl(null), alt: product.nombre, rawSrc: null }];
     }
@@ -120,12 +246,14 @@ const ProductDetailPage: React.FC = () => {
       const alt = typeof img === 'object' && img.alt ? img.alt : product.nombre;
       return { url: getImageUrl(raw), alt, rawSrc: raw || null };
     });
-  }, [product]);
+  }, [product, selectedVariant]);
 
   const productJsonLd = useMemo(() => {
     if (!product || !id) return undefined;
-    const img = getFirstImageUrl(product.imagenes);
-    const stockNum = safeInt(product.stock, 0);
+    const img = selectedVariant?.imagenes?.[0]
+      ? getImageUrl(typeof selectedVariant.imagenes[0] === 'string' ? selectedVariant.imagenes[0] : selectedVariant.imagenes[0].url || null)
+      : getFirstImageUrl(product.imagenes);
+    const stockNum = selectedStock;
     const origin = typeof window !== 'undefined' ? window.location.origin : '';
     return {
       '@context': 'https://schema.org',
@@ -137,13 +265,13 @@ const ProductDetailPage: React.FC = () => {
       offers: {
         '@type': 'Offer',
         priceCurrency: 'COP',
-        price: String(safeMoney(product.precio)),
+        price: String(selectedPrice),
         availability:
           stockNum > 0 ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock',
         ...(origin ? { url: `${origin}/productos/${id}` } : {}),
       },
     };
-  }, [product, id]);
+  }, [product, id, selectedPrice, selectedStock, selectedVariant]);
 
   const merchantProfile = useMemo(() => (product ? merchantFromProduct(product) : null), [product]);
 
@@ -175,14 +303,14 @@ const ProductDetailPage: React.FC = () => {
 
   const handleAddToCart = async () => {
     if (!product) return;
-    const stock = safeInt(product.stock, 0);
-    if (stock <= 0) return;
+    if (selectedStock <= 0) return;
 
     try {
       setAddingToCart(true);
       await addToCart(product._id, quantity, {
+        variantId: selectedVariant?._id,
         successTitle: 'Carrito',
-        successMessage: `${product.nombre} · ${quantity} ${quantity === 1 ? 'unidad' : 'unidades'}`,
+        successMessage: `${product.nombre}${selectedVariant ? ` · ${variantAttributesLabel(selectedVariant.attributes)}` : ''} · ${quantity} ${quantity === 1 ? 'unidad' : 'unidades'}`,
         action: {
           label: 'Ver carrito',
           onClick: () => navigate('/carrito'),
@@ -197,12 +325,11 @@ const ProductDetailPage: React.FC = () => {
 
   const handleBuyNow = async () => {
     if (!product) return;
-    const stock = safeInt(product.stock, 0);
-    if (stock <= 0) return;
+    if (selectedStock <= 0) return;
 
     try {
       setAddingToCart(true);
-      await addToCart(product._id, quantity, { silent: true });
+      await addToCart(product._id, quantity, { silent: true, variantId: selectedVariant?._id });
       navigate('/checkout');
     } catch {
       /* error ya notificado */
@@ -290,8 +417,8 @@ const ProductDetailPage: React.FC = () => {
     );
   }
 
-  const stock = safeInt(product.stock, 0);
-  const price = safeMoney(product.precio);
+  const stock = selectedStock;
+  const price = selectedPrice;
   const reviewCount = product.estadisticasReseñas?.totalReseñas ?? 0;
   const avgReview = product.estadisticasReseñas?.promedioCalificacion ?? 0;
 
@@ -622,6 +749,14 @@ const ProductDetailPage: React.FC = () => {
                 <span className="text-gray-500"> · {reviewCount} reseñas</span>
               </span>
             </div>
+          ) : null}
+
+          {variants.length > 0 ? (
+            <VariantSelector
+              variants={variants}
+              selectedVariant={selectedVariant}
+              onSelect={setSelectedVariantId}
+            />
           ) : null}
 
           <Card className="border-gray-200 bg-white">

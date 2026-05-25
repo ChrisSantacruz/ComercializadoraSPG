@@ -14,7 +14,7 @@ import { useNotifications } from '../../components/ui/NotificationContainer';
 import ProductImage from '../../components/ui/ProductImage';
 import { safeInt, safeMoney } from '../../lib/safeNumeric';
 
-type ConfirmState = { kind: 'remove'; productId: string; name: string } | { kind: 'clear' } | null;
+type ConfirmState = { kind: 'remove'; productId: string; variantId?: string; name: string } | { kind: 'clear' } | null;
 
 const CartPage: React.FC = () => {
   const navigate = useNavigate();
@@ -28,9 +28,13 @@ const CartPage: React.FC = () => {
   const [bootLoading, setBootLoading] = useState(true);
   const [confirm, setConfirm] = useState<ConfirmState>(null);
 
-  const rowBusy = (productId: string) =>
-    (updateMutation.isPending && updateMutation.variables?.productId === productId) ||
-    (removeMutation.isPending && removeMutation.variables === productId);
+  const rowBusy = (productId: string, variantId?: string) =>
+    (updateMutation.isPending &&
+      updateMutation.variables?.productId === productId &&
+      (updateMutation.variables?.variantId || '') === (variantId || '')) ||
+    (removeMutation.isPending &&
+      removeMutation.variables?.productId === productId &&
+      (removeMutation.variables?.variantId || '') === (variantId || ''));
 
   const clearingCart = clearMutation.isPending;
 
@@ -49,12 +53,12 @@ const CartPage: React.FC = () => {
     loadCart();
   }, [loadCart]);
 
-  const handleUpdateQuantity = (productId: string, newQuantity: number) => {
-    updateMutation.mutate({ productId, cantidad: newQuantity });
+  const handleUpdateQuantity = (productId: string, newQuantity: number, variantId?: string) => {
+    updateMutation.mutate({ productId, cantidad: newQuantity, variantId });
   };
 
-  const handleRemoveItem = (productId: string) => {
-    removeMutation.mutate(productId, {
+  const handleRemoveItem = (productId: string, variantId?: string) => {
+    removeMutation.mutate({ productId, variantId }, {
       onSettled: () => setConfirm(null),
     });
   };
@@ -133,11 +137,14 @@ const CartPage: React.FC = () => {
           <div className="space-y-4 lg:col-span-2">
             {cart!.productos.map((item: CartItem) => {
               const img0 = item.producto.imagenes?.[0];
-              const rawSrc = typeof img0 === 'string' ? img0 : (img0 as { url?: string } | undefined)?.url;
+              const rawSrc = item.variante?.imagen || item.imagen || (typeof img0 === 'string' ? img0 : (img0 as { url?: string } | undefined)?.url);
               const qty = safeInt(item.cantidad, 0);
-              const stock = safeInt(item.producto.stock, 0);
+              const stock = safeInt(item.stockDisponible ?? item.producto.stock, 0);
               const unit = safeMoney(item.precio);
               const sub = safeMoney(item.subtotal);
+              const variantText = item.variante?.attributes
+                ? Object.entries(item.variante.attributes).map(([key, value]) => `${key}: ${value}`).join(' · ')
+                : '';
 
               return (
                 <Card key={item._id} className="overflow-hidden">
@@ -162,6 +169,12 @@ const CartPage: React.FC = () => {
                         {item.producto.descripcion ? (
                           <p className="mt-1 line-clamp-2 text-sm text-gray-600">{item.producto.descripcion}</p>
                         ) : null}
+                        {variantText ? (
+                          <p className="mt-2 text-sm font-medium text-gray-700">{variantText}</p>
+                        ) : null}
+                        {item.variante?.sku ? (
+                          <p className="mt-1 text-[11px] uppercase tracking-wide text-gray-400">SKU {item.variante.sku}</p>
+                        ) : null}
                         <p className="mt-2 text-base font-semibold tabular-nums text-gray-900">
                           ${unit.toLocaleString('es-CO')} <span className="text-sm font-normal text-gray-500">c/u</span>
                         </p>
@@ -171,28 +184,29 @@ const CartPage: React.FC = () => {
                           <button
                             type="button"
                             className="px-3 py-2 text-gray-700 hover:bg-gray-50 disabled:opacity-40"
-                            disabled={rowBusy(item.producto._id)}
+                            disabled={rowBusy(item.producto._id, item.variantId)}
                             onClick={() =>
                               qty <= 1
                                 ? setConfirm({
                                     kind: 'remove',
                                     productId: item.producto._id,
+                                    variantId: item.variantId,
                                     name: item.producto.nombre,
                                   })
-                                : void handleUpdateQuantity(item.producto._id, qty - 1)
+                                : void handleUpdateQuantity(item.producto._id, qty - 1, item.variantId)
                             }
                             aria-label="Disminuir cantidad"
                           >
                             −
                           </button>
                           <span className="min-w-[2.5rem] border-x border-gray-200 px-3 py-2 text-center text-sm font-semibold tabular-nums">
-                            {rowBusy(item.producto._id) ? '…' : qty}
+                            {rowBusy(item.producto._id, item.variantId) ? '…' : qty}
                           </span>
                           <button
                             type="button"
                             className="px-3 py-2 text-gray-700 hover:bg-gray-50 disabled:opacity-40"
-                            disabled={rowBusy(item.producto._id) || qty >= stock}
-                            onClick={() => handleUpdateQuantity(item.producto._id, qty + 1)}
+                            disabled={rowBusy(item.producto._id, item.variantId) || qty >= stock}
+                            onClick={() => handleUpdateQuantity(item.producto._id, qty + 1, item.variantId)}
                             aria-label="Aumentar cantidad"
                           >
                             +
@@ -203,9 +217,9 @@ const CartPage: React.FC = () => {
                           variant="ghost"
                           size="sm"
                           className="text-error-700"
-                          disabled={rowBusy(item.producto._id)}
+                          disabled={rowBusy(item.producto._id, item.variantId)}
                           onClick={() =>
-                            setConfirm({ kind: 'remove', productId: item.producto._id, name: item.producto.nombre })
+                            setConfirm({ kind: 'remove', productId: item.producto._id, variantId: item.variantId, name: item.producto.nombre })
                           }
                           aria-label={`Quitar ${item.producto.nombre}`}
                         >
@@ -344,9 +358,10 @@ const CartPage: React.FC = () => {
             loading={
               confirm?.kind === 'remove' &&
               removeMutation.isPending &&
-              removeMutation.variables === confirm.productId
+              removeMutation.variables?.productId === confirm.productId &&
+              (removeMutation.variables?.variantId || '') === (confirm.variantId || '')
             }
-            onClick={() => confirm?.kind === 'remove' && void handleRemoveItem(confirm.productId)}
+            onClick={() => confirm?.kind === 'remove' && void handleRemoveItem(confirm.productId, confirm.variantId)}
           >
             Quitar
           </Button>

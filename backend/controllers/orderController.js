@@ -16,8 +16,17 @@ const SHIPPING_COST_COP = 18000;
 // @access  Private
 const crearPedido = async (req, res) => {
   try {
-    const { productos, direccionEntrega, metodoPago, idempotencyKey: bodyIdem } = req.body;
+    const {
+      productos,
+      direccionEntrega,
+      metodoPago,
+      tipoEntrega = 'domicilio',
+      comentarios = '',
+      idempotencyKey: bodyIdem
+    } = req.body;
     const clienteId = req.usuario.id;
+    const cliente = await User.findById(clienteId).select('nombre telefono').lean();
+    const esRecogidaEstablecimiento = tipoEntrega === 'recoger_establecimiento';
     const idempotencyKey = (req.get('Idempotency-Key') || bodyIdem || '').trim().slice(0, 200);
 
     if (idempotencyKey) {
@@ -73,25 +82,50 @@ const crearPedido = async (req, res) => {
         });
       }
 
-      if (producto.stock < item.cantidad) {
+      const variant = item.variantId && producto.variants?.id
+        ? producto.variants.id(item.variantId)
+        : null;
+      if (item.variantId && (!variant || variant.activo === false)) {
+        return res.status(400).json({
+          exito: false,
+          mensaje: `Variante no disponible para ${producto.nombre}`
+        });
+      }
+
+      const stockDisponible = variant ? variant.stock : producto.stock;
+      if (stockDisponible < item.cantidad) {
         return res.status(400).json({
           exito: false,
           mensaje: `Stock insuficiente para ${producto.nombre}`
         });
       }
 
-      const precioFinal = producto.precioOferta || producto.precio;
+      const precioFinal = variant
+        ? (variant.precioOferta || variant.precio)
+        : (producto.precioOferta || producto.precio);
       const subtotalItem = precioFinal * item.cantidad;
       subtotal += subtotalItem;
+      const itemImage = variant?.imagenes?.[0]?.url
+        || producto.imagenPrincipal
+        || (producto.imagenes && producto.imagenes.length > 0 ? producto.imagenes[0].url : '')
+        || '';
 
       productosValidos.push({
         producto: producto._id,
+        variantId: variant?._id,
+        variante: variant
+          ? {
+              sku: variant.sku,
+              attributes: variant.attributes,
+              imagen: itemImage
+            }
+          : undefined,
         comerciante: producto.comerciante,
         nombre: producto.nombre,
         precio: precioFinal,
         cantidad: item.cantidad,
         subtotal: subtotalItem,
-        imagen: producto.imagenPrincipal || (producto.imagenes && producto.imagenes.length > 0 ? producto.imagenes[0].url : '') || ''
+        imagen: itemImage
       });
 
       // NO descontar stock aquí - se descontará cuando se confirme el pago
@@ -719,15 +753,28 @@ const actualizarEstadoPedido = async (req, res) => {
         pedido.fechaCancelacion = new Date();
         // Devolver stock a los productos
         for (let item of pedido.productos) {
-          await Product.findByIdAndUpdate(
-            item.producto,
-            { 
-              $inc: { 
-                stock: item.cantidad,
-                'estadisticas.vendidos': -item.cantidad
+          if (item.variantId) {
+            await Product.updateOne(
+              { _id: item.producto, 'variants._id': item.variantId },
+              {
+                $inc: {
+                  stock: item.cantidad,
+                  'variants.$.stock': item.cantidad,
+                  'estadisticas.vendidos': -item.cantidad
+                }
               }
-            }
-          );
+            );
+          } else {
+            await Product.findByIdAndUpdate(
+              item.producto,
+              { 
+                $inc: { 
+                  stock: item.cantidad,
+                  'estadisticas.vendidos': -item.cantidad
+                }
+              }
+            );
+          }
         }
         break;
     }
@@ -792,15 +839,28 @@ const cancelarPedido = async (req, res) => {
 
     // Devolver stock a los productos
     for (let item of pedido.productos) {
-      await Product.findByIdAndUpdate(
-        item.producto,
-        { 
-          $inc: { 
-            stock: item.cantidad,
-            'estadisticas.vendidos': -item.cantidad
+      if (item.variantId) {
+        await Product.updateOne(
+          { _id: item.producto, 'variants._id': item.variantId },
+          {
+            $inc: {
+              stock: item.cantidad,
+              'variants.$.stock': item.cantidad,
+              'estadisticas.vendidos': -item.cantidad
+            }
           }
-        }
-      );
+        );
+      } else {
+        await Product.findByIdAndUpdate(
+          item.producto,
+          { 
+            $inc: { 
+              stock: item.cantidad,
+              'estadisticas.vendidos': -item.cantidad
+            }
+          }
+        );
+      }
     }
 
     successResponse(res, 'Pedido cancelado exitosamente', pedido);

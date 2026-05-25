@@ -6,12 +6,13 @@ import { Button, useNotifications } from '../ui';
 import { ProductFormHeader } from './product-form/ProductFormHeader';
 import { ProductFormMainSections } from './product-form/ProductFormMainSections';
 import { ProductFormSidebar } from './product-form/ProductFormSidebar';
-import { buildInitialDraft, buildInitialSpecs, parseTags } from './product-form/productFormUtils';
+import { buildInitialDraft, buildInitialSpecs, buildInitialVariants, parseTags } from './product-form/productFormUtils';
 import {
   ImagePreview,
   ProductDraft,
   ProductFormErrors,
   ProductSpecsDraft,
+  ProductVariantDraft,
 } from './product-form/types';
 
 interface ProductFormProps {
@@ -35,7 +36,8 @@ const ProductForm: React.FC<ProductFormProps> = ({
   const [categoriesLoading, setCategoriesLoading] = useState(true);
   const [categoryError, setCategoryError] = useState<string | null>(null);
   const [formData, setFormData] = useState<ProductDraft>(() => buildInitialDraft(product));
-  const [specsData, setSpecsData] = useState<ProductSpecsDraft>(() => buildInitialSpecs(product));
+  const [specsData] = useState<ProductSpecsDraft>(() => buildInitialSpecs(product));
+  const [variants, setVariants] = useState<ProductVariantDraft[]>(() => buildInitialVariants(product));
   const [images, setImages] = useState<ImagePreview[]>([]);
   const [errors, setErrors] = useState<ProductFormErrors>({});
   const [isDirty, setIsDirty] = useState(false);
@@ -105,10 +107,13 @@ const ProductForm: React.FC<ProductFormProps> = ({
     }
   }, [errors]);
 
-  const handleSpecsChange = useCallback((name: keyof ProductSpecsDraft, value: string) => {
-    setSpecsData(prev => ({ ...prev, [name]: value }));
+  const handleVariantsChange = useCallback((nextVariants: ProductVariantDraft[]) => {
+    setVariants(nextVariants);
     setIsDirty(true);
-  }, []);
+    if (errors.variants) {
+      setErrors(prev => ({ ...prev, variants: '' }));
+    }
+  }, [errors.variants]);
 
   const handleAddImages = useCallback((files: File[]) => {
     if (files.length === 0) return;
@@ -164,6 +169,16 @@ const ProductForm: React.FC<ProductFormProps> = ({
     if (!formData.precio || precio <= 0) newErrors.precio = 'El precio debe ser mayor a 0';
     if (formData.stock && stock < 0) newErrors.stock = 'El stock no puede ser negativo';
     if (!formData.categoria) newErrors.categoria = 'Selecciona una categoría';
+    if (variants.length > 0) {
+      const invalidVariant = variants.some((variant) => {
+        const price = Number(variant.precio);
+        const variantStock = Number(variant.stock);
+        return !Number.isFinite(price) || price <= 0 || !Number.isFinite(variantStock) || variantStock < 0;
+      });
+      if (invalidVariant) {
+        newErrors.variants = 'Todas las variantes deben tener precio mayor a 0 y stock válido.';
+      }
+    }
 
     setErrors(newErrors);
     const isValid = Object.keys(newErrors).length === 0;
@@ -203,6 +218,10 @@ const ProductForm: React.FC<ProductFormProps> = ({
       submitData.append('especificaciones', JSON.stringify(especificacionesFinales));
     }
 
+    if (variants.length > 0) {
+      submitData.append('variants', JSON.stringify(variants));
+    }
+
     if (images.length > 0) {
       images.forEach((image) => {
         submitData.append('imagenes', image.file);
@@ -227,7 +246,7 @@ const ProductForm: React.FC<ProductFormProps> = ({
         <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start">
           <ProductFormMainSections
             draft={formData}
-            specs={specsData}
+            variants={variants}
             errors={errors}
             categories={categories}
             categoriesLoading={categoriesLoading}
@@ -236,7 +255,7 @@ const ProductForm: React.FC<ProductFormProps> = ({
             existingImages={existingImages}
             disabled={isLoading}
             onDraftChange={handleDraftChange}
-            onSpecsChange={handleSpecsChange}
+            onVariantsChange={handleVariantsChange}
             onAddImages={handleAddImages}
             onRemoveImage={handleRemoveImage}
             onMoveImage={handleMoveImage}

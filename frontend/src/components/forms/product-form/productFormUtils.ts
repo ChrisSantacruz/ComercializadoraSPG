@@ -1,5 +1,5 @@
 import { Product } from '../../../types';
-import { ProductDraft, ProductSpecsDraft } from './types';
+import { ProductDraft, ProductSpecsDraft, ProductVariantDraft } from './types';
 
 export const buildInitialDraft = (product?: Product): ProductDraft => ({
   nombre: product?.nombre || '',
@@ -34,6 +34,24 @@ export const buildInitialSpecs = (product?: Product): ProductSpecsDraft => {
     opciones: String(specs.opciones || ''),
   };
 };
+
+export const buildInitialVariants = (product?: Product): ProductVariantDraft[] =>
+  (product?.variants || []).map((variant, index) => ({
+    _id: variant._id,
+    sku: variant.sku || '',
+    attributes: variant.attributes || {},
+    precio: variant.precio || variant.precio === 0 ? String(variant.precio) : String(product?.precio || ''),
+    precioOferta: variant.precioOferta || variant.precioOferta === 0 ? String(variant.precioOferta) : '',
+    stock: variant.stock || variant.stock === 0 ? String(variant.stock) : '',
+    imagenes: (variant.imagenes || [])
+      .map((image) => {
+        const url = typeof image === 'string' ? image : image.url;
+        return url ? { url, alt: typeof image === 'object' ? image.alt : undefined } : null;
+      })
+      .filter(Boolean) as Array<{ url: string; alt?: string }>,
+    activo: variant.activo !== false,
+    isDefault: variant.isDefault === true || index === 0,
+  }));
 
 export const formatCurrency = (value: string | number): string => {
   const numericValue = Number(value);

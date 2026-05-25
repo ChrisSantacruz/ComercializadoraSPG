@@ -1,5 +1,82 @@
 const mongoose = require('mongoose');
 
+const variantImageSchema = new mongoose.Schema({
+  url: {
+    type: String,
+    required: true
+  },
+  publicId: String,
+  alt: String,
+  orden: {
+    type: Number,
+    default: 0
+  }
+}, { _id: false });
+
+const productVariantSchema = new mongoose.Schema({
+  sku: {
+    type: String,
+    trim: true
+  },
+  attributes: {
+    type: Map,
+    of: String,
+    default: {}
+  },
+  precio: {
+    type: Number,
+    min: [0, 'El precio de la variante no puede ser negativo']
+  },
+  precioOferta: {
+    type: Number,
+    min: [0, 'El precio de oferta de la variante no puede ser negativo']
+  },
+  stock: {
+    type: Number,
+    min: [0, 'El stock de la variante no puede ser negativo'],
+    default: 0
+  },
+  imagenes: [variantImageSchema],
+  activo: {
+    type: Boolean,
+    default: true
+  },
+  isDefault: {
+    type: Boolean,
+    default: false
+  }
+}, { _id: true });
+
+const normalizeAttributeValue = (value) => String(value || '').trim();
+
+const getAttributesSignature = (attributes) => {
+  const raw = attributes instanceof Map ? Object.fromEntries(attributes) : (attributes || {});
+  return Object.entries(raw)
+    .map(([key, value]) => [String(key).trim().toLowerCase(), normalizeAttributeValue(value).toLowerCase()])
+    .filter(([key, value]) => key && value)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([key, value]) => `${key}:${value}`)
+    .join('|');
+};
+
+const buildVariantSku = (productName, index, attributes) => {
+  const base = String(productName || 'SPG')
+    .toUpperCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^A-Z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 24) || 'SPG';
+  const attrPart = getAttributesSignature(attributes)
+    .replace(/[^a-z0-9|:-]/gi, '-')
+    .replace(/[:|]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+    .toUpperCase()
+    .slice(0, 28);
+  return [base, attrPart || `VAR-${index + 1}`].join('-');
+};
+
 const productSchema = new mongoose.Schema({
   nombre: {
     type: String,
@@ -79,6 +156,8 @@ const productSchema = new mongoose.Schema({
     type: String,
     required: false // Temporal: hacer opcional para pruebas
   },
+
+  variants: [productVariantSchema],
   
   // Características del producto
   especificaciones: [{
@@ -233,6 +312,8 @@ productSchema.index({ 'estadisticas.calificacionPromedio': -1 });
 productSchema.index({ 'estadisticas.vistas': -1 });
 productSchema.index({ fechaCreacion: -1 });
 productSchema.index({ slug: 1 });
+productSchema.index({ 'variants.sku': 1 });
+productSchema.index({ 'variants.attributes': 1 });
 
 // Middleware para generar slug antes de guardar
 productSchema.pre('save', function(next) {
@@ -249,13 +330,91 @@ productSchema.pre('save', function(next) {
       this.slug += '-' + Date.now();
     }
   }
-  
+  if (Array.isArray(this.variants) && this.variants.length > 0) {
+    const signatures = new Set();
+    const skus = new Set();
+    let defaultFound = false;
+
+    this.variants.forEach((variant, index) => {
+      const attrs = variant.attributes instanceof Map
+        ? Object.fromEntries(variant.attributes)
+        : (variant.attributes || {});
+
+      Object.keys(attrs).forEach((key) => {
+        const normalized = normalizeAttributeValue(attrs[key]);
+        if (normalized) {
+          attrs[key] = normalized;
+        } else {
+          delete attrs[key];
+        }
+      });
+
+      const signature = getAttributesSignature(attrs);
+      if (!signature) {
+        throw new Error('Cada variante debe tener al menos un atributo visible.');
+      }
+      if (signatures.has(signature)) {
+        throw new Error('No puede haber dos variantes con la misma combinación de atributos.');
+      }
+      signatures.add(signature);
+
+      variant.attributes = attrs;
+      variant.precio = Number.isFinite(Number(variant.precio)) ? Number(variant.precio) : this.precio;
+      variant.stock = Number.isFinite(Number(variant.stock)) ? Number(variant.stock) : 0;
+      variant.activo = variant.activo !== false;
+
+      if (!variant.sku) {
+        variant.sku = buildVariantSku(this.nombre, index, attrs);
+      }
+      if (skus.has(variant.sku)) {
+        variant.sku = `${variant.sku}-${index + 1}`;
+      }
+      skus.add(variant.sku);
+
+      if (variant.isDefault && !defaultFound) {
+        defaultFound = true;
+      } else {
+        variant.isDefault = false;
+      }
+    });
+
+    const activeVariants = this.variants.filter((variant) => variant.activo !== false);
+    if (!defaultFound && activeVariants.length > 0) {
+      activeVariants[0].isDefault = true;
+    }
+
+    if (activeVariants.length > 0) {
+      const prices = activeVariants
+        .map((variant) => Number(variant.precioOferta || variant.precio))
+        .filter((price) => Number.isFinite(price) && price >= 0);
+      const defaultVariant = activeVariants.find((variant) => variant.isDefault) || activeVariants[0];
+
+      this.stock = activeVariants.reduce((total, variant) => total + Math.max(0, Number(variant.stock) || 0), 0);
+      if (prices.length > 0) {
+        this.precio = Math.min(...prices);
+      }
+      if (defaultVariant?.imagenes?.length) {
+        this.imagenPrincipal = defaultVariant.imagenes[0].url;
+      }
+    }
+  }
+
   this.fechaActualizacion = new Date();
   next();
 });
 
 // Virtual para precio con descuento
 productSchema.virtual('precioFinal').get(function() {
+  const defaultVariant = Array.isArray(this.variants)
+    ? this.variants.find((variant) => variant.activo !== false && variant.isDefault) || this.variants.find((variant) => variant.activo !== false)
+    : null;
+
+  if (defaultVariant) {
+    return defaultVariant.precioOferta && defaultVariant.precioOferta > 0
+      ? defaultVariant.precioOferta
+      : defaultVariant.precio;
+  }
+
   if (this.precioOferta && this.precioOferta > 0) {
     return this.precioOferta;
   }
@@ -288,7 +447,12 @@ productSchema.virtual('porcentajeDescuento').get(function() {
 
 // Virtual para disponibilidad
 productSchema.virtual('disponible').get(function() {
-  return ['approved', 'aprobado'].includes(this.estado) && this.stock > 0;
+  const stock = Array.isArray(this.variants) && this.variants.length > 0
+    ? this.variants
+        .filter((variant) => variant.activo !== false)
+        .reduce((total, variant) => total + Math.max(0, Number(variant.stock) || 0), 0)
+    : this.stock;
+  return ['approved', 'aprobado'].includes(this.estado) && stock > 0;
 });
 
 // Virtual para estado de stock
@@ -321,6 +485,25 @@ productSchema.methods.reducirStock = function(cantidad) {
   throw new Error('Stock insuficiente');
 };
 
+productSchema.methods.getVariantById = function(variantId) {
+  if (!variantId || !Array.isArray(this.variants)) return null;
+  return this.variants.id(variantId) || null;
+};
+
+productSchema.methods.reducirStockVariante = function(variantId, cantidad) {
+  const variant = this.getVariantById(variantId);
+  if (!variant || variant.activo === false) {
+    throw new Error('Variante no disponible');
+  }
+  if (variant.stock < cantidad) {
+    throw new Error('Stock insuficiente para la variante seleccionada');
+  }
+  variant.stock -= cantidad;
+  this.stock = Math.max(0, (this.stock || 0) - cantidad);
+  this.estadisticas.cantidadVendida += cantidad;
+  return this.save();
+};
+
 // Normalizar URL guardada en BD: rutas relativas /uploads/ se sirven desde la API; el front antecede REACT_APP_API_URL.
 const getImageUrl = (url) => {
   if (!url) return null;
@@ -343,6 +526,16 @@ productSchema.set('toJSON', {
         url: getImageUrl(img.url)
       }));
     }
+
+    if (ret.variants && Array.isArray(ret.variants)) {
+      ret.variants = ret.variants.map(variant => ({
+        ...variant,
+        attributes: variant.attributes instanceof Map ? Object.fromEntries(variant.attributes) : variant.attributes,
+        imagenes: Array.isArray(variant.imagenes)
+          ? variant.imagenes.map(img => ({ ...img, url: getImageUrl(img.url) }))
+          : []
+      }));
+    }
     
     return ret;
   }
@@ -362,6 +555,16 @@ productSchema.set('toObject', {
       ret.imagenes = ret.imagenes.map(img => ({
         ...img,
         url: getImageUrl(img.url)
+      }));
+    }
+
+    if (ret.variants && Array.isArray(ret.variants)) {
+      ret.variants = ret.variants.map(variant => ({
+        ...variant,
+        attributes: variant.attributes instanceof Map ? Object.fromEntries(variant.attributes) : variant.attributes,
+        imagenes: Array.isArray(variant.imagenes)
+          ? variant.imagenes.map(img => ({ ...img, url: getImageUrl(img.url) }))
+          : []
       }));
     }
     
