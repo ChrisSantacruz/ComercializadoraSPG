@@ -4,6 +4,8 @@ const { validationResult } = require('express-validator');
 const { successResponse, errorResponse, paginateData, validarObjectId } = require('../utils/helpers');
 const { enviarNotificacion } = require('../services/notificationService');
 
+const ACTIVE_CATEGORY_STATUSES = ['activa', 'activo', 'approved', 'aprobado'];
+
 // @desc    Obtener todas las categorías aprobadas
 // @route   GET /api/categories
 // @access  Public
@@ -14,7 +16,7 @@ const obtenerCategorias = async (req, res) => {
     const conContadores = req.query.conContadores === 'true';
 
     // Construir filtros
-    let filtros = { estado: 'activa' };
+    let filtros = { estado: { $in: ACTIVE_CATEGORY_STATUSES } };
     
     if (incluirInactivas && req.usuario && req.usuario.rol === 'administrador') {
       filtros = {}; // Mostrar todas si es admin

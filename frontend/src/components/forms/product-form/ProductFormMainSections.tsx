@@ -144,13 +144,17 @@ export const ProductFormMainSections: React.FC<ProductFormMainSectionsProps> = (
             />
           </FormField>
 
-          <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
-            <div className="flex items-center justify-between gap-3">
-              <div>
+          <div className="min-w-0 rounded-xl border border-gray-200 bg-gray-50 p-4">
+            <div className="flex min-w-0 flex-col gap-3">
+              <div className="min-w-0">
                 <p className="text-sm font-medium text-gray-950">Estado inventario</p>
                 <p className="mt-1 text-xs text-gray-500">Calculado visualmente desde stock.</p>
               </div>
-              <Badge variant={stockStatus.tone}>{stockStatus.label}</Badge>
+              <div className="flex min-w-0">
+                <Badge variant={stockStatus.tone} className="max-w-full whitespace-normal text-left leading-5">
+                  {stockStatus.label}
+                </Badge>
+              </div>
             </div>
           </div>
         </div>
