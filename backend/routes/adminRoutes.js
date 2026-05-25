@@ -6,12 +6,14 @@ const {
   deleteProduct,
   listUsers,
   updateUserStatus,
+  bootstrapSuperAdminForm,
   bootstrapSuperAdmin,
 } = require('../controllers/adminController');
 const { protect, authorize } = require('../middlewares/auth');
 
 const router = express.Router();
 
+router.get('/bootstrap-superadmin', bootstrapSuperAdminForm);
 router.post('/bootstrap-superadmin', bootstrapSuperAdmin);
 
 router.use(protect, authorize('admin', 'superadmin'));

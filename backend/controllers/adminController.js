@@ -221,6 +221,55 @@ async function updateUserStatus(req, res) {
   }
 }
 
+function bootstrapSuperAdminForm(req, res) {
+  const isProduction = process.env.NODE_ENV === 'production';
+  if (isProduction && process.env.ENABLE_ADMIN_BOOTSTRAP !== 'true') {
+    return res.status(404).send('Bootstrap admin deshabilitado');
+  }
+
+  res.setHeader('Cache-Control', 'no-store');
+  res.type('html').send(`<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Crear superadmin</title>
+  <style>
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; font-family: Arial, sans-serif; background: #f6f7f9; color: #111827; }
+    main { width: min(92vw, 440px); background: white; border: 1px solid #e5e7eb; border-radius: 18px; padding: 28px; box-shadow: 0 20px 60px rgba(15, 23, 42, .08); }
+    h1 { margin: 0 0 8px; font-size: 24px; }
+    p { margin: 0 0 22px; color: #4b5563; line-height: 1.5; }
+    label { display: block; margin: 14px 0 6px; font-weight: 700; font-size: 13px; }
+    input { width: 100%; box-sizing: border-box; border: 1px solid #d1d5db; border-radius: 10px; padding: 12px 14px; font-size: 15px; }
+    button { width: 100%; margin-top: 20px; border: 0; border-radius: 10px; padding: 13px 16px; background: #111827; color: white; font-weight: 700; cursor: pointer; }
+    small { display: block; margin-top: 16px; color: #6b7280; line-height: 1.5; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Crear superadmin</h1>
+    <p>Usa esta pantalla solo durante la ventana de bootstrap. Al terminar, desactiva <strong>ENABLE_ADMIN_BOOTSTRAP</strong>.</p>
+    <form method="post" action="/api/admin/bootstrap-superadmin" autocomplete="off">
+      <label for="secret">Admin bootstrap secret</label>
+      <input id="secret" name="secret" type="password" required />
+
+      <label for="nombre">Nombre</label>
+      <input id="nombre" name="nombre" type="text" required />
+
+      <label for="email">Email admin</label>
+      <input id="email" name="email" type="email" required />
+
+      <label for="password">Password temporal</label>
+      <input id="password" name="password" type="password" minlength="8" required />
+
+      <button type="submit">Crear superadmin</button>
+    </form>
+    <small>Si la respuesta muestra <strong>Superadmin listo</strong>, entra luego en https://andinoexpress.com/login con ese email y password.</small>
+  </main>
+</body>
+</html>`);
+}
+
 async function bootstrapSuperAdmin(req, res) {
   try {
     const isProduction = process.env.NODE_ENV === 'production';
@@ -234,7 +283,8 @@ async function bootstrapSuperAdmin(req, res) {
       return errorResponse(res, 'Bootstrap no autorizado', 401);
     }
 
-    const { nombre, email, password } = req.body?.adminData || {};
+    const adminData = req.body?.adminData || req.body || {};
+    const { nombre, email, password } = adminData;
     if (!nombre || !email || !password) {
       return errorResponse(res, 'nombre, email y password son obligatorios', 400);
     }
@@ -274,5 +324,6 @@ module.exports = {
   deleteProduct,
   listUsers,
   updateUserStatus,
+  bootstrapSuperAdminForm,
   bootstrapSuperAdmin,
 };
