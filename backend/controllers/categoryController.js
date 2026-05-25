@@ -3,6 +3,7 @@ const Product = require('../models/Product');
 const { validationResult } = require('express-validator');
 const { successResponse, errorResponse, paginateData, validarObjectId } = require('../utils/helpers');
 const { enviarNotificacion } = require('../services/notificationService');
+const { ensureActiveCategories } = require('../services/categorySeedService');
 
 const ACTIVE_CATEGORY_STATUSES = ['activa', 'activo', 'approved', 'aprobado'];
 
@@ -64,10 +65,18 @@ const obtenerCategorias = async (req, res) => {
 // @access  Public
 const obtenerCategoriasActivas = async (req, res) => {
   try {
-    const categorias = await Category.find({ estado: 'activa' })
+    let categorias = await Category.find({ estado: 'activa' })
       .select(CATEGORY_PUBLIC_FIELDS)
       .sort({ orden: 1, nombre: 1 })
       .lean();
+
+    if (categorias.length === 0) {
+      await ensureActiveCategories({ reason: 'active_categories_endpoint_empty' });
+      categorias = await Category.find({ estado: 'activa' })
+        .select(CATEGORY_PUBLIC_FIELDS)
+        .sort({ orden: 1, nombre: 1 })
+        .lean();
+    }
 
     res.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
     return res.status(200).json({

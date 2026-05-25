@@ -35,6 +35,7 @@ const notFound = require('./middlewares/notFound');
 const requestContext = require('./middlewares/requestContext');
 const logger = require('./utils/logger');
 const wompiService = require('./services/wompiService');
+const { ensureActiveCategories } = require('./services/categorySeedService');
 
 // Variables por defecto locales — alinear con frontend `config/env` (API 5001) y `.env.example`
 if (!process.env.MONGODB_URI) {
@@ -257,7 +258,11 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads'), {
 }));
 
 // Conectar a la base de datos
-connectDB();
+connectDB()
+  .then(() => ensureActiveCategories({ reason: 'startup' }))
+  .catch((error) => {
+    logger.error('startup_category_bootstrap_failed', { message: error.message });
+  });
 
 // Rutas principales
 app.get('/', (req, res) => {
