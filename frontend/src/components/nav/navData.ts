@@ -1,5 +1,5 @@
 export const BRAND_NAME = 'Andino Express';
-export const BRAND_TAGLINE = 'Ecommerce y log?stica premium en Colombia';
+export const BRAND_TAGLINE = 'Ecommerce y logistica premium en Colombia';
 
 /** Datos de contacto institucional (Sobre nosotros, pie de página, formularios). */
 export const CONTACT_EMAIL_PUBLIC = 'surandinocomercializadora@gmail.com';
