@@ -73,20 +73,20 @@ const crearTransporter = () => {
 // Plantillas de email
 const plantillas = {
   bienvenida: (nombre, codigoVerificacion) => ({
-    subject: '🎉 ¡Bienvenido a AndinoExpress!',
+    subject: 'Bienvenido a Andino Express',
     html: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
         <div style="background: linear-gradient(135deg, #1D4ED8 0%, #3B82F6 100%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
-          <h1 style="color: white; margin: 0; font-size: 28px;">¡Bienvenido a AndinoExpress!</h1>
-          <p style="color: white; margin: 10px 0 0 0; font-size: 16px;">Tu plataforma de comercio rápido y confiable</p>
+          <h1 style="color: white; margin: 0; font-size: 28px;">Bienvenido a Andino Express</h1>
+          <p style="color: white; margin: 10px 0 0 0; font-size: 16px;">Ecommerce y logística premium para Colombia</p>
         </div>
         <div style="background: #f9fafb; padding: 30px; border-radius: 0 0 10px 10px;">
           <h2 style="color: #111827; margin-top: 0;">Hola ${nombre},</h2>
           <p style="color: #374151; line-height: 1.6;">
-            ¡Gracias por unirte a nuestra comunidad! Estamos emocionados de tenerte con nosotros.
+            Gracias por crear tu cuenta. Desde ahora puedes comprar, vender y gestionar pedidos con una experiencia clara y segura.
           </p>
           <p style="color: #374151; line-height: 1.6;">
-            Para completar tu registro, por favor ingresa este código de verificación en la aplicación:
+            Para completar tu registro, ingresa este código de verificación en la aplicación:
           </p>
           <div style="text-align: center; margin: 30px 0;">
             <div style="background: #1D4ED8; color: white; padding: 20px 40px; display: inline-block; border-radius: 10px; font-size: 32px; font-weight: bold; letter-spacing: 8px; font-family: 'Courier New', monospace;">
@@ -105,11 +105,12 @@ const plantillas = {
   }),
 
   recuperarPassword: (nombre, tokenRecuperacion) => ({
-    subject: '🔐 Recuperar contraseña - AndinoExpress',
+    subject: 'Recuperar contraseña - Andino Express',
     html: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
         <div style="background: #EF4444; padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
-          <h1 style="color: white; margin: 0; font-size: 28px;">Recuperar Contraseña</h1>
+          <h1 style="color: white; margin: 0; font-size: 28px;">Recuperar contraseña</h1>
+          <p style="color: white; margin: 10px 0 0 0; font-size: 16px;">Andino Express</p>
         </div>
         <div style="background: #f9fafb; padding: 30px; border-radius: 0 0 10px 10px;">
           <h2 style="color: #111827; margin-top: 0;">Hola ${nombre},</h2>
@@ -152,7 +153,7 @@ const enviarEmail = async (para, tipo, datos) => {
           to: para,
           from: {
             email: process.env.SENDGRID_FROM_EMAIL || 'noreply@andinoexpress.com',
-            name: process.env.SENDGRID_FROM_NAME || 'AndinoExpress'
+            name: process.env.SENDGRID_FROM_NAME || 'Andino Express'
           },
           subject: subject,
           html: html
@@ -210,7 +211,7 @@ const enviarEmail = async (para, tipo, datos) => {
     console.log('📤 Enviando via SMTP...');
     const resultado = await Promise.race([
       transporter.sendMail({
-        from: `"AndinoExpress" <${process.env.EMAIL_USER}>`,
+        from: `"Andino Express" <${process.env.EMAIL_USER}>`,
         to: para,
         subject: subject,
         html: html

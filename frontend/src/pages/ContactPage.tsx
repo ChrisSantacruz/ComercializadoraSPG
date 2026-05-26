@@ -34,7 +34,7 @@ const ContactPage: React.FC = () => {
       `Nombre: ${data.nombre}\nEmail: ${data.email}\nEmpresa: ${data.empresa}\n\n${data.mensaje}`,
     );
     window.location.href = `mailto:${CONTACT_EMAIL_PUBLIC}?subject=${encodeURIComponent(
-      'Contacto web — Comercializadora SPG',
+      'Contacto web - Andino Express',
     )}&body=${body}`;
     showSuccess('Listo', 'Se abrió tu cliente de correo con el mensaje preparado.');
     reset();

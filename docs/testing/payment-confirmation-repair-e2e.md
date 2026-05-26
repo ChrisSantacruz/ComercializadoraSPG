@@ -26,6 +26,7 @@
 | P10 | SMTP caído | Romper credenciales SMTP/SendGrid | Pago queda confirmado y stock consistente; logs `email_failed`; no se revierte orden por correo. |
 | P11 | Comprador = comerciante | Comprar producto propio en sandbox | Se envía comprobante comprador y aviso comerciante como correos separados al mismo email. |
 | P12 | Query inválida | Return con `id` no verificable por Wompi | No devuelve 400 superficial; queda pendiente hasta webhook real. |
+| P13 | Compra multi-proveedor | Comprar producto A de proveedor 1 y producto B de proveedor 2 | Cliente recibe comprobante general con toda la compra; proveedor 1 recibe solo producto A; proveedor 2 recibe solo producto B. |
 
 ## Validaciones de UI
 

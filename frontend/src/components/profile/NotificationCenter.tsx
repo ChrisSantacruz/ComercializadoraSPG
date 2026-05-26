@@ -1,4 +1,14 @@
 import React, { useState, useEffect } from 'react';
+import {
+  BellAlertIcon,
+  BellIcon,
+  CheckCircleIcon,
+  CurrencyDollarIcon,
+  InboxIcon,
+  StarIcon,
+  TruckIcon,
+  XCircleIcon,
+} from '@heroicons/react/24/outline';
 import { useAuthStore } from '../../stores/authStore';
 import LoadingSpinner from '../ui/LoadingSpinner';
 import { userNotificationsService } from '../../services/userNotificationsService';
@@ -71,18 +81,18 @@ const NotificationCenter: React.FC = () => {
   };
 
   const getNotificationIcon = (tipo: string) => {
-    const icons: { [key: string]: string } = {
-      'nueva_venta': '💰',
-      'pedido_confirmado': '✅',
-      'pedido_enviado': '🚚',
-      'pedido_entregado': '📦',
-      'nueva_reseña': '⭐',
-      'producto_aprobado': '✅',
-      'producto_rechazado': '❌',
-      'stock_bajo': '⚠️',
-      'sistema': '🔔'
+    const icons: { [key: string]: React.ComponentType<{ className?: string }> } = {
+      nueva_venta: CurrencyDollarIcon,
+      pedido_confirmado: CheckCircleIcon,
+      pedido_enviado: TruckIcon,
+      pedido_entregado: CheckCircleIcon,
+      nueva_reseña: StarIcon,
+      producto_aprobado: CheckCircleIcon,
+      producto_rechazado: XCircleIcon,
+      stock_bajo: BellAlertIcon,
+      sistema: BellIcon
     };
-    return icons[tipo] || '📢';
+    return icons[tipo] || BellIcon;
   };
 
   const getNotificationColor = (prioridad: string) => {
@@ -162,7 +172,7 @@ const NotificationCenter: React.FC = () => {
       <div className="max-h-96 overflow-y-auto">
         {filteredNotifications.length === 0 ? (
           <div className="px-6 py-8 text-center">
-            <div className="text-4xl mb-4">📭</div>
+            <InboxIcon className="mx-auto mb-4 h-10 w-10 text-gray-400" aria-hidden />
             <p className="text-gray-500">
               {activeTab === 'all' && 'No tienes notificaciones'}
               {activeTab === 'unread' && 'No tienes notificaciones sin leer'}
@@ -172,6 +182,9 @@ const NotificationCenter: React.FC = () => {
         ) : (
           <div className="divide-y divide-gray-200">
             {filteredNotifications.map((notification) => (
+              (() => {
+                const NotificationIcon = getNotificationIcon(notification.tipo);
+                return (
               <div
                 key={notification._id}
                 className={`p-4 hover:bg-gray-50 transition-colors cursor-pointer ${
@@ -185,8 +198,8 @@ const NotificationCenter: React.FC = () => {
                   
                   {/* Icon */}
                   <div className="flex-shrink-0">
-                    <div className="w-8 h-8 text-xl">
-                      {getNotificationIcon(notification.tipo)}
+                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-100 text-gray-600">
+                      <NotificationIcon className="h-5 w-5" aria-hidden />
                     </div>
                   </div>
                   
@@ -234,6 +247,8 @@ const NotificationCenter: React.FC = () => {
                   </div>
                 </div>
               </div>
+                );
+              })()
             ))}
           </div>
         )}

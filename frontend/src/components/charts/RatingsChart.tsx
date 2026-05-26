@@ -1,4 +1,5 @@
 import React from 'react';
+import { StarIcon } from '@heroicons/react/24/solid';
 
 interface RatingsChartProps {
   data: {
@@ -29,14 +30,13 @@ const RatingsChart: React.FC<RatingsChartProps> = ({
 
   const renderStars = (rating: number) => {
     return Array.from({ length: 5 }, (_, i) => (
-      <span
+      <StarIcon
         key={i}
-        className={`text-lg ${
+        className={`h-5 w-5 ${
           i < rating ? 'text-yellow-400' : 'text-gray-300'
         }`}
-      >
-        ⭐
-      </span>
+        aria-hidden
+      />
     ));
   };
 
@@ -69,7 +69,7 @@ const RatingsChart: React.FC<RatingsChartProps> = ({
             <div key={rating} className="flex items-center space-x-3">
               <div className="flex items-center space-x-1 w-12">
                 <span className="text-sm font-medium text-gray-700">{rating}</span>
-                <span className="text-yellow-400">⭐</span>
+                <StarIcon className="h-4 w-4 text-yellow-400" aria-hidden />
               </div>
               
               <div className="flex-1 bg-gray-200 rounded-full h-2 relative overflow-hidden">
@@ -110,7 +110,8 @@ const RatingsChart: React.FC<RatingsChartProps> = ({
                 </div>
                 
                 <div className="mt-2 text-xs text-gray-600 flex items-center">
-                  {rating}⭐
+                  {rating}
+                  <StarIcon className="ml-0.5 h-3.5 w-3.5 text-yellow-400" aria-hidden />
                 </div>
               </div>
             );

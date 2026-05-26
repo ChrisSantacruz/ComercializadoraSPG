@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { CheckCircleIcon, EnvelopeIcon } from '@heroicons/react/24/outline';
 import api from '../../services/api';
 
 const PaymentSuccessPage: React.FC = () => {
@@ -31,10 +32,10 @@ const PaymentSuccessPage: React.FC = () => {
       <div className="max-w-2xl w-full bg-white rounded-2xl shadow-xl p-8">
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-24 h-24 bg-green-100 rounded-full mb-6">
-            <span className="text-6xl">✓</span>
+            <CheckCircleIcon className="h-14 w-14 text-green-600" aria-hidden />
           </div>
           <h1 className="text-3xl font-bold text-gray-900 mb-3">
-            ¡Pago Exitoso!
+            Pago exitoso
           </h1>
           <p className="text-xl text-gray-600">
             Tu compra ha sido procesada correctamente
@@ -66,8 +67,9 @@ const PaymentSuccessPage: React.FC = () => {
         )}
 
         <div className="bg-[#0d8e76]/10 border-l-4 border-[#0d8e76] p-4 mb-6">
-          <p className="text-sm text-gray-700">
-            📧 Hemos enviado un correo de confirmación con los detalles de tu compra.
+          <p className="inline-flex items-start gap-2 text-sm text-gray-700">
+            <EnvelopeIcon className="mt-0.5 h-4 w-4 shrink-0 text-[#0d8e76]" aria-hidden />
+            <span>Hemos enviado un correo de confirmación con los detalles de tu compra.</span>
           </p>
         </div>
 

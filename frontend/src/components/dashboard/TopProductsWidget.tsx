@@ -1,4 +1,5 @@
 import React from 'react';
+import { ArchiveBoxIcon, TrophyIcon } from '@heroicons/react/24/outline';
 import { Product } from '../../types';
 import { getFirstImageUrl } from '../../utils/imageUtils';
 
@@ -20,7 +21,10 @@ const TopProductsWidget: React.FC<TopProductsWidgetProps> = ({
   if (loading) {
     return (
       <div className="bg-white rounded-lg shadow-md p-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">🏆 Productos Más Vendidos</h3>
+        <h3 className="mb-4 inline-flex items-center gap-2 text-lg font-semibold text-gray-900">
+          <TrophyIcon className="h-5 w-5 text-yellow-500" aria-hidden />
+          Productos más vendidos
+        </h3>
         <div className="space-y-3">
           {[1, 2, 3].map(i => (
             <div key={i} className="flex items-center space-x-3 animate-pulse">
@@ -39,13 +43,16 @@ const TopProductsWidget: React.FC<TopProductsWidgetProps> = ({
   return (
     <div className="bg-white rounded-lg shadow-md p-6">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-semibold text-gray-900">🏆 Productos Más Vendidos</h3>
+        <h3 className="inline-flex items-center gap-2 text-lg font-semibold text-gray-900">
+          <TrophyIcon className="h-5 w-5 text-yellow-500" aria-hidden />
+          Productos más vendidos
+        </h3>
         <span className="text-sm text-gray-500">Últimos 30 días</span>
       </div>
 
       {topProducts.length === 0 ? (
         <div className="text-center py-6">
-          <div className="text-gray-400 text-4xl mb-2">📦</div>
+          <ArchiveBoxIcon className="mx-auto mb-2 h-10 w-10 text-gray-400" aria-hidden />
           <p className="text-gray-500">No hay ventas registradas aún</p>
           <p className="text-sm text-gray-400">Tus productos más vendidos aparecerán aquí</p>
         </div>
@@ -86,12 +93,7 @@ const TopProductsWidget: React.FC<TopProductsWidgetProps> = ({
                 </div>
               </div>
 
-              {/* Medalla para top 3 */}
-              {index < 3 && (
-                <div className="text-2xl">
-                  {index === 0 ? '🥇' : index === 1 ? '🥈' : '🥉'}
-                </div>
-              )}
+              {index < 3 ? <TrophyIcon className="h-6 w-6 text-yellow-500" aria-hidden /> : null}
             </div>
           ))}
 

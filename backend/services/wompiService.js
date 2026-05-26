@@ -75,7 +75,7 @@ class WompiService {
             // Construir payload según la documentación oficial con configuración robusta
             const payload = {
                 name: `Pedido #${reference}`,
-                description: `Pago del pedido ${reference} - Comercializadora SPG`,
+                description: `Pago del pedido ${reference} - Andino Express`,
                 single_use: paymentData.singleUse !== false,
                 collect_shipping: false,
                 currency: currency || 'COP',
@@ -122,7 +122,7 @@ class WompiService {
                     logger.warn('wompi_customer_phone_invalid', {});
                     payload.customer_data = {
                         phone_number: '3001234567',
-                        full_name: 'Cliente ComercializadoraSPG',
+                        full_name: 'Cliente Andino Express',
                         legal_id_type: 'CC',
                         legal_id: '12345678'
                     };
@@ -131,7 +131,7 @@ class WompiService {
                 logger.warn('wompi_customer_data_incomplete', {});
                 payload.customer_data = {
                     phone_number: '3001234567',
-                    full_name: 'Cliente ComercializadoraSPG',
+                    full_name: 'Cliente Andino Express',
                     legal_id_type: 'CC',
                     legal_id: '12345678'
                 };

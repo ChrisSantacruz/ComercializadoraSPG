@@ -1,5 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
+import { LightBulbIcon } from '@heroicons/react/24/outline';
 import { getFriendlyErrorMessage, getSuggestedAction } from '../../utils/errorUtils';
 
 interface ErrorDisplayProps {
@@ -89,8 +90,9 @@ const ErrorDisplay: React.FC<ErrorDisplayProps> = ({
 
           {/* Acción sugerida */}
           {suggestedAction && (
-            <p className="text-sm text-gray-500 mb-4">
-              💡 {suggestedAction}
+            <p className="mb-4 inline-flex items-start justify-center gap-2 text-sm text-gray-500">
+              <LightBulbIcon className="mt-0.5 h-4 w-4 shrink-0 text-gray-400" aria-hidden />
+              <span>{suggestedAction}</span>
             </p>
           )}
 

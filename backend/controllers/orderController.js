@@ -16,7 +16,7 @@ const SHIPPING_COST_COP = 18000;
 const DELIVERY_TYPES = ['domicilio', 'recoger_establecimiento'];
 const VISIBLE_ORDER_STATES = ['confirmado', 'procesando', 'enviado', 'entregado', 'cancelado', 'paid'];
 const DEFAULT_PICKUP_LOCATION = {
-  name: 'Comercializadora SPG',
+  name: 'Andino Express',
   address: 'Pasto, Nariño',
   instructions: 'Te avisaremos cuando el pedido esté listo. Lleva tu documento y el número de orden.',
   schedule: 'Lunes a sábado · coordinación previa',

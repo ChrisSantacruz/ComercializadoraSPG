@@ -39,7 +39,7 @@ const HomePage: React.FC = () => {
     <div className="min-w-0 bg-gray-50">
       <SeoHead
         title="Inicio"
-        description="Catálogo B2B con logística Sur Andina: inventario curado, checkout seguro y soporte dedicado."
+        description="Catálogo B2B de Andino Express: inventario curado, checkout seguro y soporte logístico en Colombia."
         canonicalPath="/"
       />
       <HomeHeroSection />

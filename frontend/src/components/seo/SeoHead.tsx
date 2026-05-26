@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 
-const BRAND = 'Comercializadora SPG';
+const BRAND = 'Andino Express';
 
 function upsertMeta(attr: 'name' | 'property', key: string, content: string) {
   let el = document.querySelector(`meta[${attr}="${key}"]`) as HTMLMetaElement | null;
@@ -43,6 +43,7 @@ export function SeoHead({ title, description, canonicalPath, ogImage, jsonLd }: 
 
     upsertMeta('property', 'og:title', fullTitle);
     upsertMeta('property', 'og:type', 'website');
+    upsertMeta('property', 'og:site_name', BRAND);
 
     if (description) {
       upsertMeta('name', 'description', description);

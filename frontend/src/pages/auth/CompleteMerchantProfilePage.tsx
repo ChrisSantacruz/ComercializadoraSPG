@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { BriefcaseIcon } from '@heroicons/react/24/outline';
 import { authService } from '../../services/authService';
 
 const CompleteMerchantProfilePage: React.FC = () => {
@@ -80,7 +81,7 @@ const CompleteMerchantProfilePage: React.FC = () => {
         <div className="bg-white rounded-2xl shadow-xl p-8">
           <div className="text-center mb-8">
             <div className="inline-flex items-center justify-center w-16 h-16 bg-green-600 text-white rounded-full mb-4">
-              <span className="text-3xl">💼</span>
+              <BriefcaseIcon className="h-9 w-9" aria-hidden />
             </div>
             <h1 className="text-3xl font-bold text-gray-900 mb-2">
               Completa tu Perfil de Comerciante
@@ -94,7 +95,6 @@ const CompleteMerchantProfilePage: React.FC = () => {
             {/* Nombre de Empresa */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                <span className="inline mr-2">🏢</span>
                 Nombre de la Empresa *
               </label>
               <input
@@ -110,7 +110,6 @@ const CompleteMerchantProfilePage: React.FC = () => {
             {/* Descripción */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                <span className="inline mr-2">📝</span>
                 Descripción de la Empresa *
               </label>
               <textarea
@@ -130,7 +129,6 @@ const CompleteMerchantProfilePage: React.FC = () => {
             {/* Categoría de Empresa */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                <span className="inline mr-2">🏷️</span>
                 Categoría del Negocio *
               </label>
               <select
@@ -140,23 +138,22 @@ const CompleteMerchantProfilePage: React.FC = () => {
                 required
               >
                 <option value="">Selecciona una categoría</option>
-                <option value="Alimentación">🍕 Alimentación</option>
-                <option value="Tecnología">💻 Tecnología</option>
-                <option value="Ropa">👔 Ropa y Moda</option>
-                <option value="Hogar">🏠 Hogar y Decoración</option>
-                <option value="Salud">💊 Salud y Bienestar</option>
-                <option value="Servicios">🛠️ Servicios</option>
-                <option value="Deportes">⚽ Deportes</option>
-                <option value="Libros">📚 Libros y Educación</option>
-                <option value="Artesanías">🎨 Artesanías</option>
-                <option value="Otro">📦 Otro</option>
+                <option value="Alimentación">Alimentación</option>
+                <option value="Tecnología">Tecnología</option>
+                <option value="Ropa">Ropa y Moda</option>
+                <option value="Hogar">Hogar y Decoración</option>
+                <option value="Salud">Salud y Bienestar</option>
+                <option value="Servicios">Servicios</option>
+                <option value="Deportes">Deportes</option>
+                <option value="Libros">Libros y Educación</option>
+                <option value="Artesanías">Artesanías</option>
+                <option value="Otro">Otro</option>
               </select>
             </div>
 
             {/* Teléfono */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                <span className="inline mr-2">📱</span>
                 Teléfono de Contacto *
               </label>
               <input
@@ -172,7 +169,6 @@ const CompleteMerchantProfilePage: React.FC = () => {
             {/* Sitio Web */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                <span className="inline mr-2">🌐</span>
                 Sitio Web (Opcional)
               </label>
               <input
@@ -187,7 +183,6 @@ const CompleteMerchantProfilePage: React.FC = () => {
             {/* Redes Sociales */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-3">
-                <span className="inline mr-2">📱</span>
                 Redes Sociales (Opcional)
               </label>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -217,7 +212,6 @@ const CompleteMerchantProfilePage: React.FC = () => {
             {/* Tipo de Documento */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                <span className="inline mr-2">🆔</span>
                 Tipo de Documento
               </label>
               <select

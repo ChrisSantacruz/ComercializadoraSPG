@@ -1,4 +1,12 @@
 import React, { useMemo, useState } from 'react';
+import {
+  ArchiveBoxIcon,
+  CalendarDaysIcon,
+  CheckCircleIcon,
+  CubeIcon,
+  TruckIcon,
+  XCircleIcon,
+} from '@heroicons/react/24/outline';
 import { Order } from '../../types';
 import { useMerchantOrdersQuery, useUpdateMerchantOrderStatusMutation } from '../../lib/query/hooks/useOrdersQuery';
 import { MerchantDashboardSkeleton } from '../../components/merchant/MerchantDashboardSkeleton';
@@ -212,7 +220,7 @@ const MerchantOrders: React.FC = () => {
         <div className="space-y-6">
           {filteredOrders.length === 0 ? (
             <div className="bg-white rounded-xl shadow-lg p-12 text-center">
-              <div className="text-gray-400 text-6xl mb-4">📦</div>
+              <ArchiveBoxIcon className="mx-auto mb-4 h-14 w-14 text-gray-400" aria-hidden />
               <h3 className="text-xl font-semibold text-gray-900 mb-2">
                 No hay pedidos
               </h3>
@@ -257,7 +265,10 @@ const MerchantOrders: React.FC = () => {
                                 'Dirección no especificada'}
                           </p>
                           <p className="text-gray-600 text-sm">
-                            📅 {formatDate((order as any).fechaCreacion || (order as any).createdAt || new Date().toISOString())}
+                            <span className="inline-flex items-center gap-1.5">
+                              <CalendarDaysIcon className="h-4 w-4 text-gray-500" aria-hidden />
+                              {formatDate((order as any).fechaCreacion || (order as any).createdAt || new Date().toISOString())}
+                            </span>
                           </p>
                         </div>
                       </div>
@@ -311,18 +322,20 @@ const MerchantOrders: React.FC = () => {
                               setSelectedOrder(order);
                               setShowModal(true);
                             }}
-                            className="w-full bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 transition-colors"
+                            className="inline-flex w-full items-center justify-center gap-2 bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 transition-colors"
                           >
-                            ✅ Confirmar Pedido
+                            <CheckCircleIcon className="h-5 w-5" aria-hidden />
+                            Confirmar pedido
                           </button>
                         )}
                         
                         {(order.estado || 'pendiente') === 'confirmado' && (
                           <button
                             onClick={() => handleUpdateStatus(order._id || '', 'procesando')}
-                            className="w-full bg-orange-500 text-white px-4 py-2 rounded-lg hover:bg-orange-600 transition-colors"
+                            className="inline-flex w-full items-center justify-center gap-2 bg-orange-500 text-white px-4 py-2 rounded-lg hover:bg-orange-600 transition-colors"
                           >
-                            📦 Iniciar Preparación
+                            <CubeIcon className="h-5 w-5" aria-hidden />
+                            Iniciar preparación
                           </button>
                         )}
                         
@@ -332,27 +345,30 @@ const MerchantOrders: React.FC = () => {
                               setOrderToUpdate(order);
                               setShowTrackingModal(true);
                             }}
-                            className="w-full bg-purple-500 text-white px-4 py-2 rounded-lg hover:bg-purple-600 transition-colors"
+                            className="inline-flex w-full items-center justify-center gap-2 bg-purple-500 text-white px-4 py-2 rounded-lg hover:bg-purple-600 transition-colors"
                           >
-                            🚚 Marcar como Enviado
+                            <TruckIcon className="h-5 w-5" aria-hidden />
+                            Marcar como enviado
                           </button>
                         )}
                         
                         {(order.estado || 'pendiente') === 'enviado' && (
                           <button
                             onClick={() => handleUpdateStatus(order._id || '', 'entregado')}
-                            className="w-full bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 transition-colors"
+                            className="inline-flex w-full items-center justify-center gap-2 bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 transition-colors"
                           >
-                            🎉 Marcar como Entregado
+                            <CheckCircleIcon className="h-5 w-5" aria-hidden />
+                            Marcar como entregado
                           </button>
                         )}
                         
                         {(order.estado || 'pendiente') !== 'cancelado' && (order.estado || 'pendiente') !== 'entregado' && (
                           <button
                             onClick={() => handleUpdateStatus(order._id || '', 'cancelado')}
-                            className="w-full bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600 transition-colors"
+                            className="inline-flex w-full items-center justify-center gap-2 bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600 transition-colors"
                           >
-                            ❌ Cancelar Pedido
+                            <XCircleIcon className="h-5 w-5" aria-hidden />
+                            Cancelar pedido
                           </button>
                         )}
                       </div>

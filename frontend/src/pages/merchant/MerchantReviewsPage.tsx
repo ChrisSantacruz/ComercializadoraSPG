@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { CheckCircleIcon } from '@heroicons/react/24/outline';
+import { StarIcon } from '@heroicons/react/24/solid';
 import api from '../../services/api';
 
 interface Review {
@@ -87,9 +88,7 @@ const MerchantReviewsPage: React.FC = () => {
 
   const renderStars = (rating: number) => {
     return Array.from({ length: 5 }, (_, index) => (
-      <span key={index} className={index < rating ? 'text-yellow-400' : 'text-gray-300'}>
-        ⭐
-      </span>
+      <StarIcon key={index} className={`h-5 w-5 ${index < rating ? 'text-yellow-400' : 'text-gray-300'}`} aria-hidden />
     ));
   };
 
@@ -119,8 +118,9 @@ const MerchantReviewsPage: React.FC = () => {
               </div>
               <div className="bg-[#f2902f]/10 p-4 rounded-lg">
                 <p className="text-sm text-gray-600">Calificación Promedio</p>
-                <p className="text-2xl font-bold text-[#f2902f]">
-                  {stats.promedioGeneral?.toFixed(1)} ⭐
+                <p className="inline-flex items-center gap-1 text-2xl font-bold text-[#f2902f]">
+                  {stats.promedioGeneral?.toFixed(1)}
+                  <StarIcon className="h-6 w-6" aria-hidden />
                 </p>
               </div>
               <div className="bg-green-50 p-4 rounded-lg">
@@ -153,7 +153,7 @@ const MerchantReviewsPage: React.FC = () => {
                     : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                 }`}
               >
-                {filter === 'all' ? 'Todas' : `${filter} ⭐`}
+                {filter === 'all' ? 'Todas' : `${filter} estrellas`}
               </button>
             ))}
           </div>

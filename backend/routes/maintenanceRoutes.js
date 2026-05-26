@@ -150,7 +150,7 @@ router.get('/tool', (req, res) => {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mantenimiento de Productos - AndinoExpress</title>
+    <title>Mantenimiento de Productos - Andino Express</title>
     <style>
         body { background-color: #f9fafb; padding: 32px; font-family: Arial, sans-serif; margin: 0; }
         .container { max-width: 800px; margin: 0 auto; }

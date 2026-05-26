@@ -51,7 +51,7 @@ async function sendViaProvider(message) {
       to: message.to,
       from: {
         email: process.env.SENDGRID_FROM_EMAIL || process.env.EMAIL_USER,
-        name: process.env.SENDGRID_FROM_NAME || 'Comercializadora SPG'
+        name: process.env.SENDGRID_FROM_NAME || 'Andino Express'
       },
       subject: message.subject,
       html: message.html
@@ -70,7 +70,7 @@ async function sendViaProvider(message) {
 
   const transporter = createSmtpTransporter();
   const result = await transporter.sendMail({
-    from: `"${process.env.EMAIL_FROM_NAME || 'Comercializadora SPG'}" <${process.env.EMAIL_USER}>`,
+    from: `"${process.env.EMAIL_FROM_NAME || 'Andino Express'}" <${process.env.EMAIL_USER}>`,
     ...message
   });
 

@@ -1,4 +1,6 @@
 import React, { useState } from 'react';
+import { CheckCircleIcon, TrashIcon, XCircleIcon } from '@heroicons/react/24/outline';
+import { StarIcon } from '@heroicons/react/24/solid';
 import { Order } from '../../types';
 import { useNotifications } from '../ui/NotificationContainer';
 import orderService from '../../services/orderService';
@@ -99,7 +101,10 @@ const DeliveryConfirmationForm: React.FC<DeliveryConfirmationFormProps> = ({
                     onChange={() => setConfirmed(true)}
                     className="mr-3"
                   />
-                  <span className="text-green-600 font-medium">✅ Sí, recibí todo correctamente</span>
+                  <span className="inline-flex items-center gap-2 text-green-600 font-medium">
+                    <CheckCircleIcon className="h-5 w-5" aria-hidden />
+                    Sí, recibí todo correctamente
+                  </span>
                 </label>
                 <label className="flex items-center">
                   <input
@@ -109,7 +114,10 @@ const DeliveryConfirmationForm: React.FC<DeliveryConfirmationFormProps> = ({
                     onChange={() => setConfirmed(false)}
                     className="mr-3"
                   />
-                  <span className="text-red-600 font-medium">❌ No, hubo problemas</span>
+                  <span className="inline-flex items-center gap-2 text-red-600 font-medium">
+                    <XCircleIcon className="h-5 w-5" aria-hidden />
+                    No, hubo problemas
+                  </span>
                 </label>
               </div>
             </div>
@@ -130,8 +138,9 @@ const DeliveryConfirmationForm: React.FC<DeliveryConfirmationFormProps> = ({
                         className={`text-2xl ${
                           star <= rating ? 'text-yellow-400' : 'text-gray-300'
                         } hover:text-yellow-400 transition-colors`}
+                        aria-label={`${star} de 5`}
                       >
-                        ⭐
+                        <StarIcon className="h-7 w-7" aria-hidden />
                       </button>
                     ))}
                   </div>
@@ -213,8 +222,9 @@ const DeliveryConfirmationForm: React.FC<DeliveryConfirmationFormProps> = ({
                         type="button"
                         onClick={() => removeProblem(index)}
                         className="px-3 py-2 text-red-600 hover:text-red-700"
+                        aria-label="Eliminar problema"
                       >
-                        🗑️
+                        <TrashIcon className="h-5 w-5" aria-hidden />
                       </button>
                     </div>
                   ))}

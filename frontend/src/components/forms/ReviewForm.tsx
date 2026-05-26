@@ -1,4 +1,6 @@
 import React, { useState } from 'react';
+import { HandThumbDownIcon, HandThumbUpIcon } from '@heroicons/react/24/outline';
+import { StarIcon } from '@heroicons/react/24/solid';
 import { Order } from '../../types';
 import { useNotifications } from '../ui/NotificationContainer';
 import reviewService from '../../services/reviewService';
@@ -85,8 +87,9 @@ const ReviewForm: React.FC<ReviewFormProps> = ({
             className={`text-xl ${
               star <= value ? 'text-yellow-400' : 'text-gray-300'
             } hover:text-yellow-400 transition-colors`}
+            aria-label={`${star} de 5`}
           >
-            ⭐
+            <StarIcon className="h-6 w-6" aria-hidden />
           </button>
         ))}
       </div>
@@ -183,7 +186,10 @@ const ReviewForm: React.FC<ReviewFormProps> = ({
                     onChange={() => setRecommend(true)}
                     className="mr-3"
                   />
-                  <span className="text-green-600">👍 Sí, lo recomiendo</span>
+                  <span className="inline-flex items-center gap-2 text-green-600">
+                    <HandThumbUpIcon className="h-5 w-5" aria-hidden />
+                    Sí, lo recomiendo
+                  </span>
                 </label>
                 <label className="flex items-center">
                   <input
@@ -193,7 +199,10 @@ const ReviewForm: React.FC<ReviewFormProps> = ({
                     onChange={() => setRecommend(false)}
                     className="mr-3"
                   />
-                  <span className="text-red-600">👎 No lo recomiendo</span>
+                  <span className="inline-flex items-center gap-2 text-red-600">
+                    <HandThumbDownIcon className="h-5 w-5" aria-hidden />
+                    No lo recomiendo
+                  </span>
                 </label>
               </div>
             </div>
